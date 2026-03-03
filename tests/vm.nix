@@ -43,7 +43,7 @@ pkgs.testers.runNixOSTest {
       system.activationScripts.createProject = {
         deps = [ "users" ];
         text = ''
-          mkdir -p /home/alice/project
+          mkdir -p /home/alice/project/subdir
           echo 'export SANDBOX_TEST=hello' > /home/alice/project/.envrc
           chown -R alice:users /home/alice/project
         ''
@@ -140,5 +140,21 @@ pkgs.testers.runNixOSTest {
         machine.log(f"SANDBOX_TEST on re-entry: '{reentry_val}'")
         assert reentry_val == "hello", \
             f"Expected SANDBOX_TEST=hello on re-entry, got: {reentry_val!r}"
+
+    # Exit sandbox before testing subdir entry
+    machine.send_chars("cd /\n")
+    machine.execute("rm -f /tmp/exited")
+    machine.send_chars("echo DONE > /tmp/exited\n")
+    machine.wait_for_file("/tmp/exited")
+
+    with subtest("sandbox entry on cd into subdirectory"):
+        machine.send_chars("cd ~/project/subdir\n")
+        machine.execute(f"rm -f {project}/subdir-check")
+        machine.send_chars(f"echo $SANDBOX_TEST > {project}/subdir-check\n")
+        machine.wait_until_succeeds(f"test -s {project}/subdir-check", timeout=10)
+        subdir_val = machine.succeed(f"cat {project}/subdir-check").strip()
+        machine.log(f"SANDBOX_TEST in subdir: '{subdir_val}'")
+        assert subdir_val == "hello", \
+            f"Expected SANDBOX_TEST=hello in subdir, got: {subdir_val!r}"
   '';
 }

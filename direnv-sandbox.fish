@@ -63,7 +63,7 @@ else
         touch $_DIRENV_SANDBOX_EXIT_DIR_FILE
         set -lx _DIRENV_SANDBOX_ACTIVE 1
         set -lx _DIRENV_SANDBOX_ROOT $__direnv_sandbox_project_root
-        $DIRENV_SANDBOX_CMD -- fish
+        $DIRENV_SANDBOX_CMD $__direnv_sandbox_project_root -- fish
         if test -s "$_DIRENV_SANDBOX_EXIT_DIR_FILE"
             set -l exit_dir (cat $_DIRENV_SANDBOX_EXIT_DIR_FILE)
             builtin cd -- $exit_dir 2>/dev/null

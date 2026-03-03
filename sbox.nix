@@ -173,6 +173,13 @@ let
       SANDBOX_ENTRYPOINT=(${entrypoint})
     fi
 
+    # If the real cwd is under PROJECT_DIR, start there; otherwise PROJECT_DIR.
+    WORK_DIR="$(pwd)"
+    case "$WORK_DIR" in
+      "$PROJECT_DIR"|"$PROJECT_DIR"/*) ;;
+      *) WORK_DIR="$PROJECT_DIR" ;;
+    esac
+
     echo "Starting bubblewrap sandbox in: $PROJECT_DIR"
     exec ${bubblewrap}/bin/bwrap \
       --die-with-parent \
@@ -226,7 +233,7 @@ let
       "''${EXTRA_BIND_ARGS[@]}" \
       ${bubblewrapArgs} \
       --bind "$PROJECT_DIR" "$PROJECT_DIR" \
-      --chdir "$PROJECT_DIR" \
+      --chdir "$WORK_DIR" \
       --setenv HOME "$HOME" \
       --setenv USER $USER \
       --setenv SANDBOX 1 \
