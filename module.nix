@@ -20,6 +20,11 @@ let
       "--bind" "$_DIRENV_SANDBOX_EXIT_DIR_FILE" "$_DIRENV_SANDBOX_EXIT_DIR_FILE"
     ];
   };
+  sboxArgs =
+    (lib.concatMap (p: [ "--bind" p p ]) cfg.bind)
+    ++ (lib.concatMap (p: [ "--ro-bind" p p ]) cfg.bindReadOnly)
+    ++ (lib.concatMap (p: [ "-p" (toString p) ]) cfg.allowedTCPPorts)
+    ++ (lib.optionals cfg.hostNetwork [ "--network" "host" ]);
 in
 {
   options.programs.direnv.sandbox = {
@@ -33,7 +38,7 @@ in
 
     command = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "${sbox}/bin/sbox" ];
+      default = [ "${sbox}/bin/sbox" ] ++ sboxArgs;
       description = "The sandbox command and arguments. The shell to exec is appended after '--'.";
       example = [
         "bwrap"
@@ -45,6 +50,33 @@ in
         "--tmpfs"
         "/tmp"
       ];
+    };
+
+    bind = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = "Paths to bind-mount read-write inside the sandbox.";
+      example = [ "$HOME/.cache" "/data" ];
+    };
+
+    bindReadOnly = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = "Paths to bind-mount read-only inside the sandbox.";
+      example = [ "/opt/tools" ];
+    };
+
+    allowedTCPPorts = lib.mkOption {
+      type = lib.types.listOf lib.types.port;
+      default = [];
+      description = "Host TCP ports to forward into the sandbox.";
+      example = [ 8080 5432 ];
+    };
+
+    hostNetwork = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Use host network instead of isolated network namespace.";
     };
   };
 
