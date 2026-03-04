@@ -37,6 +37,15 @@
       nixosModules.default = self.nixosModules.direnv-sandbox;
       nixosModules.direnv-sandbox = import ./module.nix { inherit self; };
 
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          packages = [
+            pkgs.bubblewrap
+            pkgs.slirp4netns
+          ];
+        };
+      });
+
       checks = forAllSystems (pkgs: {
         shellcheck =
           pkgs.runCommandLocal "shellcheck"
