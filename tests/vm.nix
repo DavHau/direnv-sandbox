@@ -64,6 +64,14 @@ pkgs.testers.runNixOSTest {
           mkdir -p /home/alice/project-notallowed
           echo 'export SANDBOX_TEST_NOTALLOWED=nope' > /home/alice/project-notallowed/.envrc
           chown -R alice:users /home/alice/project-notallowed
+
+          # Symlinked project: real dir is ~/synced/projects/symtest,
+          # accessed via ~/projects-link/symtest
+          mkdir -p /home/alice/synced/projects/symtest
+          echo 'export SANDBOX_TEST_SYM=symlinked' > /home/alice/synced/projects/symtest/.envrc
+          chown -R alice:users /home/alice/synced
+          ln -sfn /home/alice/synced/projects /home/alice/projects-link
+          chown -h alice:users /home/alice/projects-link
         ''
         # Prevent zsh's new-user-install wizard from blocking the inner shell
         + lib.optionalString (shell == "zsh") ''
@@ -151,6 +159,30 @@ pkgs.testers.runNixOSTest {
     machine.execute("rm -f /tmp/back-home2")
     machine.send_chars("echo DONE > /tmp/back-home2\n")
     machine.wait_until_succeeds("test -s /tmp/back-home2", timeout=5)
+
+    with subtest("sandbox works for symlinked project directory"):
+        # Allow the envrc via the REAL path
+        machine.execute("rm -f /tmp/allow-sym")
+        machine.send_chars("direnv allow ~/synced/projects/symtest; echo DONE > /tmp/allow-sym\n")
+        machine.wait_until_succeeds("test -s /tmp/allow-sym", timeout=5)
+
+        # Enter via the SYMLINK path — the sandbox should launch and
+        # direnv should load the envrc successfully (not "blocked").
+        machine.send_chars("cd ~/projects-link/symtest\n")
+        symtest_dir = "/home/alice/synced/projects/symtest"
+        machine.execute(f"rm -f {symtest_dir}/sym-env")
+        machine.send_chars(f"echo $SANDBOX_TEST_SYM > {symtest_dir}/sym-env\n")
+        machine.wait_until_succeeds(f"test -s {symtest_dir}/sym-env", timeout=10)
+        val = machine.succeed(f"cat {symtest_dir}/sym-env").strip()
+        machine.log(f"SANDBOX_TEST_SYM via symlink: '{val}'")
+        assert val == "symlinked", \
+            f"Expected SANDBOX_TEST_SYM=symlinked via symlink path, got: {val!r}"
+
+    # Exit sandbox
+    machine.send_chars("cd /\n")
+    machine.execute("rm -f /tmp/exited-sym")
+    machine.send_chars("echo DONE > /tmp/exited-sym\n")
+    machine.wait_until_succeeds("test -s /tmp/exited-sym", timeout=15)
 
     with subtest("sandbox entry on cd"):
         # We're in ~ (home dir). cd into project triggers PROMPT_COMMAND which

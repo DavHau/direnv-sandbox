@@ -37,7 +37,7 @@ end
 # Check whether sandboxing is disabled for a given envrc directory.
 # Returns 0 (true) if disabled, 1 (false) if enabled.
 function __direnv_sandbox_is_disabled
-    set -l dir $argv[1]
+    set -l dir (realpath $argv[1] 2>/dev/null; or echo $argv[1])
     set -l disabled_dir (set -q XDG_DATA_HOME; and echo $XDG_DATA_HOME; or echo $HOME/.local/share)/direnv-sandbox/disabled
     # Hash with trailing newline, matching direnv's pathHash convention
     set -l hash (printf '%s\n' $dir | command sha256sum | cut -d' ' -f1)
@@ -71,9 +71,13 @@ else
     function __direnv_sandbox_run
         set -lx _DIRENV_SANDBOX_EXIT_DIR_FILE (set -q XDG_RUNTIME_DIR; and echo $XDG_RUNTIME_DIR; or echo /tmp)"/.direnv-sandbox-exit."$fish_pid
         touch $_DIRENV_SANDBOX_EXIT_DIR_FILE
+        # Resolve symlinks so the physical path inside the sandbox matches
+        # what direnv's Go runtime sees via os.Getwd(), ensuring the allow
+        # database hash is consistent.
+        set -l resolved_root (realpath $__direnv_sandbox_project_root)
         set -lx _DIRENV_SANDBOX_ACTIVE 1
-        set -lx _DIRENV_SANDBOX_ROOT $__direnv_sandbox_project_root
-        $DIRENV_SANDBOX_CMD $__direnv_sandbox_project_root -- fish
+        set -lx _DIRENV_SANDBOX_ROOT $resolved_root
+        $DIRENV_SANDBOX_CMD $resolved_root -- fish
         if test -s "$_DIRENV_SANDBOX_EXIT_DIR_FILE"
             set -l exit_dir (cat $_DIRENV_SANDBOX_EXIT_DIR_FILE)
             builtin cd -- $exit_dir 2>/dev/null

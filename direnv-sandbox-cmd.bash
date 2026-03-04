@@ -20,8 +20,12 @@ set -euo pipefail
 DISABLED_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/direnv-sandbox/disabled"
 
 _hash_dir() {
+  # Resolve symlinks so the hash is the same regardless of whether
+  # the user passes a symlink path or the real path.
+  local resolved
+  resolved="$(realpath "$1" 2>/dev/null)" || resolved="$1"
   # Hash with trailing newline, matching direnv's pathHash convention
-  printf '%s\n' "$1" | sha256sum | cut -d' ' -f1
+  printf '%s\n' "$resolved" | sha256sum | cut -d' ' -f1
 }
 
 # Walk upward from a starting directory looking for .envrc or .env.

@@ -38,7 +38,8 @@ __direnv_sandbox_find_envrc() {
 # Check whether sandboxing is disabled for a given envrc directory.
 # Returns 0 (true) if disabled, 1 (false) if enabled.
 __direnv_sandbox_is_disabled() {
-  local dir="$1"
+  local dir
+  dir="$(realpath "$1" 2>/dev/null)" || dir="$1"
   local disabled_dir="${XDG_DATA_HOME:-$HOME/.local/share}/direnv-sandbox/disabled"
   local hash
   # Hash with trailing newline, matching direnv's pathHash convention
@@ -77,6 +78,11 @@ __direnv_sandbox_hook() {
     eval "$("${DIRENV_SANDBOX_DIRENV_BIN:-direnv}" export bash)"
     return "$previous_exit_status"
   fi
+
+  # Resolve symlinks so the physical path inside the sandbox matches
+  # what direnv's Go runtime sees via os.Getwd(), ensuring the allow
+  # database hash is consistent.
+  project_root="$(realpath "$project_root")"
 
   # Temp file for the inner shell to communicate its final directory
   local _DIRENV_SANDBOX_EXIT_DIR_FILE
