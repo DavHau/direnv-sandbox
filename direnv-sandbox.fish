@@ -86,11 +86,6 @@ else
     end
 
     # Check for sandbox entry after directory changes.
-    # Wraps directory-changing commands instead of using --on-event
-    # fish_prompt because the event handler approach fails to reclaim
-    # the terminal foreground process group in our NixOS VM test
-    # (tty1 + full sbox/bwrap/slirp4netns chain), despite working
-    # fine in standalone tests with pseudo-terminals.
     function __direnv_sandbox_maybe_enter
         set -q _DIRENV_SANDBOX_ACTIVE; and return 0
         set -q DIRENV_SANDBOX_CMD; or return 0
@@ -113,6 +108,12 @@ else
         end
 
         __direnv_sandbox_run
+    end
+
+    # Trigger sandbox entry on any directory change (catches z, autojump,
+    # cd, pushd, popd, and any other tool that modifies PWD).
+    function __direnv_sandbox_pwd_watch --on-variable PWD
+        __direnv_sandbox_maybe_enter
     end
 
     # Prompt hook: keeps direnv running for disabled-sandbox directories.
@@ -141,41 +142,5 @@ else
             __direnv_sandbox_maybe_enter
         end
         return $cmd_status
-    end
-
-    # cd is a builtin in fish 4.x
-    function cd --wraps cd
-        builtin cd $argv; or return $status
-        __direnv_sandbox_maybe_enter
-        return 0
-    end
-
-    # pushd/popd/prevd/nextd are functions — save originals before wrapping
-    for cmd in pushd popd prevd nextd
-        functions --copy $cmd __direnv_sandbox_original_$cmd 2>/dev/null
-    end
-
-    function pushd --wraps pushd
-        __direnv_sandbox_original_pushd $argv; or return $status
-        __direnv_sandbox_maybe_enter
-        return 0
-    end
-
-    function popd --wraps popd
-        __direnv_sandbox_original_popd $argv; or return $status
-        __direnv_sandbox_maybe_enter
-        return 0
-    end
-
-    function prevd --wraps prevd
-        __direnv_sandbox_original_prevd $argv; or return $status
-        __direnv_sandbox_maybe_enter
-        return 0
-    end
-
-    function nextd --wraps nextd
-        __direnv_sandbox_original_nextd $argv; or return $status
-        __direnv_sandbox_maybe_enter
-        return 0
     end
 end
