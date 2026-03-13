@@ -32,7 +32,8 @@ let
   sboxArgs =
     (lib.concatMap (p: [ "--bind" p p ]) cfg.bind)
     ++ (lib.concatMap (p: [ "--ro-bind" p p ]) cfg.bindReadOnly)
-    ++ (lib.concatMap (p: [ "-p" (toString p) ]) cfg.allowedTCPPorts)
+    ++ (lib.concatMap (p: [ "--allow-port" (toString p) ]) cfg.allowedTCPPorts)
+    ++ (lib.concatMap (p: [ "--expose-port" (toString p) ]) cfg.exposedTCPPorts)
     ++ (lib.optionals cfg.hostNetwork [ "--network" "host" ])
     ++ (lib.optionals (cfg.allowParent != "off") [ "--allow-parent" cfg.allowParent ]);
 in
@@ -79,8 +80,15 @@ in
     allowedTCPPorts = lib.mkOption {
       type = lib.types.listOf lib.types.port;
       default = [];
-      description = "Host TCP ports to forward into the sandbox.";
+      description = "Host TCP ports to forward into the sandbox (sandbox can access host services).";
       example = [ 8080 5432 ];
+    };
+
+    exposedTCPPorts = lib.mkOption {
+      type = lib.types.listOf lib.types.port;
+      default = [];
+      description = "Sandbox TCP ports to expose to the host (host can access sandbox services).";
+      example = [ 3000 8000 ];
     };
 
     allowParent = lib.mkOption {

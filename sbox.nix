@@ -165,7 +165,7 @@ let
       for port in "''${FWD_PORTS[@]}"; do
         ${socat}/bin/socat \
           TCP4-LISTEN:"$port",bind=127.0.0.1,fork,reuseaddr \
-          UNIX-CONNECT:"''${__SANDBOX_WORK}/fwd-$port.sock" &
+          UNIX-CONNECT:"''${__SANDBOX_WORK}/fwd-$port.sock" >/dev/null 2>&1 &
       done
     fi
 
@@ -280,7 +280,8 @@ let
 
     USE_HOST_NET=0
     ALLOW_PARENT="off"
-    FORWARD_PORTS=()
+    HOST_PORTS=()
+    SANDBOX_PORTS=()
     BIND_ARGS=()
     ARGS=()
     EXEC_CMD=()
@@ -299,8 +300,12 @@ let
           ALLOW_PARENT="$2"
           shift 2
           ;;
-        -p)
-          FORWARD_PORTS+=("$2")
+        --allow-port|-p)
+          HOST_PORTS+=("$2")
+          shift 2
+          ;;
+        --expose-port)
+          SANDBOX_PORTS+=("$2")
           shift 2
           ;;
         --bind)
@@ -350,7 +355,7 @@ let
     # Start host-side port forwarders. Each listens on a UNIX socket
     # and forwards connections to the host's 127.0.0.1:PORT.
     SOCAT_PIDS=()
-    for port in "''${FORWARD_PORTS[@]}"; do
+    for port in "''${HOST_PORTS[@]}"; do
       ${socat}/bin/socat \
         UNIX-LISTEN:"$WORK/fwd-$port.sock",fork \
         TCP4:127.0.0.1:"$port" &
@@ -376,9 +381,22 @@ let
     (
       while [ ! -s "$PIDFILE" ]; do sleep 0.1; done
       NS_PID=$(cat "$PIDFILE")
-      exec ${slirp4netns}/bin/slirp4netns --disable-host-loopback -c -6 -r 3 "$NS_PID" tap0 3>"$READY" >/dev/null 2>&1
+      exec ${slirp4netns}/bin/slirp4netns --disable-host-loopback -c -6 -r 3 -a "$WORK/slirp-api.sock" "$NS_PID" tap0 3>"$READY" >/dev/null 2>&1
     ) &
     SLIRP_PID=$!
+
+    # Expose sandbox ports to the host via slirp4netns host forwarding.
+    # Waits for slirp4netns to be ready, then adds forwarding rules via
+    # the API socket. Each rule maps host 127.0.0.1:PORT → sandbox 10.0.2.100:PORT.
+    if [ ''${#SANDBOX_PORTS[@]} -gt 0 ]; then
+      (
+        while [ ! -s "$READY" ]; do sleep 0.1; done
+        for port in "''${SANDBOX_PORTS[@]}"; do
+          printf '{"execute":"add_hostfwd","arguments":{"proto":"tcp","host_addr":"127.0.0.1","host_port":%d,"guest_addr":"10.0.2.100","guest_port":%d}}\n' "$port" "$port" \
+            | ${socat}/bin/socat - UNIX-CONNECT:"$WORK/slirp-api.sock"
+        done
+      ) &
+    fi
 
     # Run the inner script inside a new user + network namespace.
     # Foreground so the TTY is preserved for the interactive shell.
@@ -387,7 +405,7 @@ let
     __SANDBOX_PIDFILE="$PIDFILE" \
     __SANDBOX_READY="$READY" \
     __SANDBOX_RESOLV="$RESOLV" \
-    __SANDBOX_FORWARD_PORTS="''${FORWARD_PORTS[*]}" \
+    __SANDBOX_FORWARD_PORTS="''${HOST_PORTS[*]}" \
     __SANDBOX_WORK="$WORK" \
     __SANDBOX_BIND_ARGS="''${BIND_ARGS[*]}" \
     __SANDBOX_ALLOW_PARENT="$ALLOW_PARENT" \
