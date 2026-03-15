@@ -103,7 +103,7 @@ pkgs.testers.runNixOSTest {
         while time.monotonic() - start_time < timeout_seconds:
             if fn(False):
                 return
-            time.sleep(0.1)
+            time.sleep(0.3)
         elapsed = time.monotonic() - start_time
         if not fn(True):
             raise RequestedAssertionFailed(
