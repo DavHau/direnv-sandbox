@@ -19,12 +19,18 @@ let
        else ''"'' + builtins.replaceStrings [ ''"'' "\\" ] [ ''\"'' "\\\\" ] string + ''"'';
   escapedCmd = lib.concatMapStringsSep " " escapeShellArgWithExpansion cfg.command;
 
-  sboxBase = self.packages.${pkgs.system}.sbox;
+  # Build the sbox package with module-configured overrides.
+  sboxBase = (self.packages.${pkgs.system}.sbox).override {
+    inherit (cfg) packages shellHook;
+    env = cfg.environment;
+  };
 
   # sbox with direnv-specific bind mounts:
   #  - direnv allow/deny database (read-only)
   #  - exit-dir file for CWD sync between inner and outer shell
-  sboxDirenv = sboxBase.override {
+  sboxDirenv = (self.packages.${pkgs.system}.sbox).override {
+    inherit (cfg) packages shellHook;
+    env = cfg.environment;
     bubblewrapArgs = [
       "--ro-bind-try" "$HOME/.local/share/direnv" "$HOME/.local/share/direnv"
       "--ro-bind-try" "$HOME/.local/share/direnv-sandbox" "$HOME/.local/share/direnv-sandbox"
@@ -120,6 +126,36 @@ in
       type = lib.types.bool;
       default = false;
       description = "Use host network instead of isolated network namespace.";
+    };
+
+    packages = lib.mkOption {
+      type = lib.types.listOf lib.types.package;
+      default = [];
+      description = "Extra packages to make available on PATH inside the sandbox.";
+      example = lib.literalExpression "[ pkgs.nodejs pkgs.python3 ]";
+    };
+
+    environment = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = {};
+      description = "Environment variables to set inside the sandbox.";
+      example = lib.literalExpression ''{ CUDA_HOME = "''${pkgs.cudaPackages.cudatoolkit}"; }'';
+    };
+
+    shellHook = lib.mkOption {
+      type = lib.types.lines;
+      default = "";
+      description = ''
+        Shell commands to run when entering the sandbox, before the
+        interactive shell starts. If empty, the sandbox drops straight
+        into the user's shell.
+      '';
+      example = ''
+        if [ ! -d .venv ]; then
+          python -m venv .venv --system-site-packages
+        fi
+        source .venv/bin/activate
+      '';
     };
 
     sbox.enable = lib.mkOption {
