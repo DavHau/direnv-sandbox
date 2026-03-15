@@ -285,8 +285,43 @@ let
     BIND_ARGS=()
     ARGS=()
     EXEC_CMD=()
+    usage() {
+      cat <<USAGE
+Usage: sbox [OPTIONS] [DIR] [-- COMMAND...]
+
+Launch an isolated development sandbox using bubblewrap and slirp4netns.
+
+If DIR is given, it is mounted read-write as the project directory inside the
+sandbox. Defaults to the current working directory.
+
+If COMMAND is given (after --), it is executed inside the sandbox instead of
+an interactive shell.
+
+Options:
+  --network host          Use the host network instead of an isolated namespace
+  --allow-parent MODE     Mount the parent of the project directory inside the
+                          sandbox. MODE is "ro" (read-only) or "rw" (read-write)
+  --allow-port, -p PORT   Forward a host TCP port into the sandbox
+  --expose-port PORT      Expose a sandbox TCP port to the host
+  --bind SRC DEST         Bind-mount SRC to DEST (read-write) inside the sandbox
+  --ro-bind SRC DEST      Bind-mount SRC to DEST (read-only) inside the sandbox
+  -h, --help              Show this help message
+
+Examples:
+  sbox                    Sandbox the current directory
+  sbox ~/projects/myapp   Sandbox a specific directory
+  sbox -p 5432            Allow access to host PostgreSQL
+  sbox --expose-port 8080 Expose sandbox port 8080 to the host
+  sbox -- make build      Run a command inside the sandbox
+USAGE
+      exit 0
+    }
+
     while [ $# -gt 0 ]; do
       case "$1" in
+        -h|--help)
+          usage
+          ;;
         --network)
           if [ "''${2:-}" = "host" ]; then
             USE_HOST_NET=1
