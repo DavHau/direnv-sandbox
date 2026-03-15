@@ -86,6 +86,17 @@ pkgs.testers.runNixOSTest {
         assert "MISSING" in val or "No such file" in val, \
             f"Expected /tmp to be isolated, got: {val!r}"
 
+    with subtest("basic sandbox: PS1 is prefixed with [sandbox]"):
+        # Write a helper script to avoid quoting issues
+        machine.succeed(f"echo 'echo \"$PS1\" > {project}/ps1-out' > {project}/check-ps1.sh")
+        machine.succeed(f"chmod +x {project}/check-ps1.sh")
+        machine.succeed(
+            f"su - alice -c 'cd {project} && sbox {project} -- bash -i {project}/check-ps1.sh'"
+        )
+        val = machine.succeed(f"cat {project}/ps1-out").strip()
+        assert val.startswith("[sandbox]"), \
+            f"Expected PS1 to start with '[sandbox]', got: {val!r}"
+
     with subtest("basic sandbox: /nix is available"):
         val = sbox_run("test -d /nix/store && echo yes")
         assert val == "yes", f"Expected /nix/store to exist, got: {val!r}"

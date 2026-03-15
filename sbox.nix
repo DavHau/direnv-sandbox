@@ -51,6 +51,12 @@ let
     127.0.0.1 localhost
     ::1 localhost ip6-localhost ip6-loopback
   '';
+  bashPrompt = writeText "sandbox-prompt.bashrc" ''
+    # Source the user's original bashrc if present
+    [ -f "$HOME/.bashrc.orig" ] && . "$HOME/.bashrc.orig"
+    # Prepend [sandbox] to whatever PS1 was configured
+    PS1="[sandbox] ''${PS1#\\n}"
+  '';
   fishPrompt = writeText "sandbox-prompt.fish" ''
     functions --copy fish_prompt __original_fish_prompt
     function fish_prompt
@@ -234,7 +240,8 @@ let
       --dir $HOME/.local/share \
       --dir $HOME/.config/fish/conf.d \
       --ro-bind ${fishPrompt} $HOME/.config/fish/conf.d/sandbox-prompt.fish \
-      --ro-bind-try $HOME/.bashrc $HOME/.bashrc \
+      --ro-bind-try $HOME/.bashrc $HOME/.bashrc.orig \
+      --ro-bind ${bashPrompt} $HOME/.bashrc \
       --ro-bind-try $HOME/.bash_profile $HOME/.bash_profile \
       --ro-bind-try $HOME/.profile $HOME/.profile \
       --ro-bind-try $HOME/.zshrc $HOME/.zshrc \
@@ -274,7 +281,6 @@ let
       --setenv HOME "$HOME" \
       --setenv USER $USER \
       --setenv SANDBOX 1 \
-      --setenv PS1 "[sandbox] \w \$ " \
       --setenv PATH "${lib.makeBinPath packages}:$SANDBOX_PATH" \
       ${env} \
       "''${SANDBOX_ENTRYPOINT[@]}"
