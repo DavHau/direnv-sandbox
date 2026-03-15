@@ -3,7 +3,8 @@
     "allow": [
       "Bash(gh gist create:*)",
       "Bash(jj status:*)",
-      "Bash(jj describe:*)"
+      "Bash(jj describe:*)",
+      "Bash(jj diff:*)"
     ]
   }
 }

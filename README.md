@@ -77,6 +77,9 @@ programs.direnv.sandbox = {
   # Forward host TCP ports into the sandbox
   allowedTCPPorts = [ 5432 6379 ];
 
+  # Expose sandbox TCP ports to the host
+  exposedTCPPorts = [ 3000 8000 ];
+
   # Mount the parent directory of the project inside the sandbox
   # "off" (default) = not mounted, "read" = read-only, "write" = read-write
   # The project directory itself is always mounted read-write regardless.
@@ -105,6 +108,19 @@ direnv-sandbox on  ~/my-trusted-project   # re-enable
 The path is optional — without it, the command searches upward from `$PWD`.
 
 This command must be run **outside** the sandbox. Code inside a sandbox cannot disable its own sandboxing (the disabled state is stored read-only inside the sandbox).
+
+## Manual sandbox usage
+
+The `sbox` command is available on your `$PATH` when the module is enabled. It lets you manually launch sandboxed shells with the same isolation and configuration (bind mounts, port forwarding, network mode, etc.) that direnv-sandbox applies automatically:
+
+```bash
+sbox                        # sandbox the current directory
+sbox ~/projects/myapp       # sandbox a specific directory
+sbox -- make build          # run a command inside the sandbox
+sbox -p 5432 -- psql        # additionally forward a host port
+```
+
+Run `sbox --help` for all available options. Any options configured via the NixOS module (e.g. `bind`, `allowedTCPPorts`, `hostNetwork`) are baked into the wrapper, so `sbox` inherits your system configuration by default. Extra flags passed on the command line are appended on top.
 
 ## Running tests
 
