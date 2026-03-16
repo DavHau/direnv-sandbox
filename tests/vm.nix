@@ -45,7 +45,9 @@ pkgs.testers.runNixOSTest {
         enable = true;
         sandbox = {
           enable = true;
-          bind = [ "$HOME/.cache" ];
+          bind = {
+            "$HOME/.cache" = {};
+          };
         };
       };
 

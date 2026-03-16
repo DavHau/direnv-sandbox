@@ -4,7 +4,10 @@
       "Bash(gh gist create:*)",
       "Bash(jj status:*)",
       "Bash(jj describe:*)",
-      "Bash(jj diff:*)"
+      "Bash(jj diff:*)",
+      "Bash(find /home/grmpf/synced/projects/direnv-sandbox -type f \\\\\\( -name \"*.sh\" -o -name \"*test*\" -o -name \"*sbox*\" \\\\\\) 2>/dev/null | grep -v .direnv)",
+      "Bash(find /home/grmpf/synced/projects/direnv-sandbox -type f \\\\\\( -name \"README*\" -o -name \"*.md\" \\\\\\) 2>/dev/null | grep -v .direnv)",
+      "Bash(jj log:*)"
     ]
   }
 }

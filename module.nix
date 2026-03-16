@@ -38,9 +38,15 @@ let
     ];
   };
 
+  bindMountArgs = flag: mounts:
+    lib.concatMap (src:
+      let dst = mounts.${src}.to;
+      in [ flag src dst ]
+    ) (builtins.attrNames mounts);
+
   sboxArgs =
-    (lib.concatMap (p: [ "--bind-try" p p ]) cfg.bind)
-    ++ (lib.concatMap (p: [ "--ro-bind-try" p p ]) cfg.bindReadOnly)
+    (bindMountArgs "--bind-try" cfg.bind)
+    ++ (bindMountArgs "--ro-bind-try" cfg.bindReadOnly)
     ++ (lib.concatMap (p: [ "--allow-port" (toString p) ]) cfg.allowedTCPPorts)
     ++ (lib.concatMap (p: [ "--expose-port" (toString p) ]) cfg.exposedTCPPorts)
     ++ (lib.optionals cfg.hostNetwork [ "--network" "host" ])
@@ -85,17 +91,39 @@ in
     };
 
     bind = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [];
-      description = "Paths to bind-mount read-write inside the sandbox.";
-      example = [ "$HOME/.cache" "/data" ];
+      type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+        options.to = lib.mkOption {
+          type = lib.types.str;
+          default = name;
+          description = "Destination path inside the sandbox. Defaults to the source path (attribute name).";
+        };
+      }));
+      default = {};
+      description = "Paths to bind-mount read-write inside the sandbox. Attribute names are source paths; set `to` to override the destination.";
+      example = lib.literalExpression ''
+        {
+          "$HOME/.cache" = {};
+          "/data" = {};
+        }
+      '';
     };
 
     bindReadOnly = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [];
-      description = "Paths to bind-mount read-only inside the sandbox.";
-      example = [ "/opt/tools" ];
+      type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
+        options.to = lib.mkOption {
+          type = lib.types.str;
+          default = name;
+          description = "Destination path inside the sandbox. Defaults to the source path (attribute name).";
+        };
+      }));
+      default = {};
+      description = "Paths to bind-mount read-only inside the sandbox. Attribute names are source paths; set `to` to override the destination.";
+      example = lib.literalExpression ''
+        {
+          "/opt/tools" = {};
+          "$HOME/.ssh/id_ed25519_github".to = "$HOME/.ssh/id_ed25519";
+        }
+      '';
     };
 
     allowedTCPPorts = lib.mkOption {
