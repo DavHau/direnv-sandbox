@@ -293,9 +293,6 @@ let
       --ro-bind-try $HOME/.gitconfig $HOME/.gitconfig \
       --ro-bind-try $HOME/.config/git $HOME/.config/git \
       --ro-bind-try /etc/gitconfig /etc/gitconfig \
-      --ro-bind-try $HOME/.claude $HOME/.claude \
-      --ro-bind-try $HOME/.claude.json $HOME/.claude.json \
-      --ro-bind-try $HOME/.pi $HOME/.pi \
       "''${PATH_BIND_ARGS[@]}" \
       "''${EDITOR_ARGS[@]}" \
       "''${EXTRA_BIND_ARGS[@]}" \
