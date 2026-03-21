@@ -161,8 +161,26 @@ in
     persist = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [];
-      description = "Paths to persist across sandbox sessions. Each path gets a per-project backing store in <project>/.sbox/state/.";
-      example = [ "$HOME/.claude" "$HOME/.npm" ];
+      description = ''
+        Paths to persist across sandbox sessions. Each path gets a
+        per-project backing store in <project>/.sbox/state/.
+
+        Persist mounts are applied before explicit bind/bindReadOnly
+        mounts, so you can overlay read-only files from the host on
+        top. For example, persist $HOME/.claude for per-project state
+        while binding credentials and settings read-only from the host.
+      '';
+      example = lib.literalExpression ''
+        [
+          "$HOME/.claude"   # per-project Claude Code state
+        ]
+
+        # Combine with bindReadOnly to keep host auth/settings:
+        # bindReadOnly = {
+        #   "$HOME/.claude/.credentials.json" = {};
+        #   "$HOME/.claude/settings.json" = {};
+        # };
+      '';
     };
 
     allowAudio = lib.mkOption {

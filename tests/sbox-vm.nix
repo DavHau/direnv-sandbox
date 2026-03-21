@@ -176,6 +176,28 @@ pkgs.testers.runNixOSTest {
         assert val1 == "a", f"Expected 'a' from first persist path, got: {val1!r}"
         assert val2 == "b", f"Expected 'b' from second persist path, got: {val2!r}"
 
+    with subtest("persist: ro-bind inside persisted dir overlays correctly"):
+        # Create a host file that should appear read-only inside the persisted dir
+        machine.succeed("su - alice -c 'mkdir -p /home/alice/.hoststate && echo host-secret > /home/alice/.hoststate/creds'")
+        # Persist the dir, but ro-bind a file from the host on top of a subpath
+        val = sbox_run(
+            "cat /home/alice/.testoverlay/creds",
+            "--persist /home/alice/.testoverlay --ro-bind /home/alice/.hoststate/creds /home/alice/.testoverlay/creds",
+        )
+        assert val == "host-secret", \
+            f"Expected host file visible inside persisted dir, got: {val!r}"
+        # Verify the rest of the persisted dir is still writable
+        sbox_run(
+            "echo writable > /home/alice/.testoverlay/newfile",
+            "--persist /home/alice/.testoverlay --ro-bind /home/alice/.hoststate/creds /home/alice/.testoverlay/creds",
+        )
+        val = sbox_run(
+            "cat /home/alice/.testoverlay/newfile",
+            "--persist /home/alice/.testoverlay",
+        )
+        assert val == "writable", \
+            f"Expected persisted write to survive, got: {val!r}"
+
     with subtest("network host: sandbox shares host network"):
         val = sbox_run(
             "ip link show lo >/dev/null 2>&1 && echo has-lo || echo no-lo",

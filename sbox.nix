@@ -189,6 +189,22 @@ let
       read -ra EXTRA_BIND_ARGS <<< "$__SANDBOX_BIND_ARGS"
     fi
 
+    # Sort extra bind mounts by destination path so that parent mounts
+    # are processed before children. This lets child mounts (e.g. an
+    # --ro-bind on a subdir) correctly overlay parent mounts (e.g. a
+    # --bind from --persist) regardless of argument order.
+    if [ ''${#EXTRA_BIND_ARGS[@]} -gt 3 ]; then
+      SORTED_BIND_ARGS=()
+      while IFS=$'\t' read -r dest flag src; do
+        SORTED_BIND_ARGS+=("$flag" "$src" "$dest")
+      done < <(
+        for ((i = 0; i < ''${#EXTRA_BIND_ARGS[@]}; i += 3)); do
+          printf '%s\t%s\t%s\n' "''${EXTRA_BIND_ARGS[i+2]}" "''${EXTRA_BIND_ARGS[i]}" "''${EXTRA_BIND_ARGS[i+1]}"
+        done | sort -t$'\t' -k1,1
+      )
+      EXTRA_BIND_ARGS=("''${SORTED_BIND_ARGS[@]}")
+    fi
+
     # Parent directory bind mount (read-only or read-write).
     # Placed before the project dir mount so that bwrap's --bind for the
     # project itself overlays it with full read-write access.
@@ -417,7 +433,7 @@ USAGE
       for p in "''${PERSIST_ARGS[@]}"; do
         rel="''${p#/}"
         backing="$PERSIST_PROJECT_DIR/.sbox/state/$rel"
-        [ -d "$backing" ] || mkdir -p "$backing"
+        mkdir -p "$backing"
         BIND_ARGS+=(--bind "$backing" "$p")
       done
     fi
