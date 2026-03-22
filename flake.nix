@@ -1,72 +1,50 @@
+# Flake compatibility wrapper. The actual project entry point is nilla.nix.
 {
   description = "Bubblewrap sandboxing for direnv sessions";
 
-  # Nixtamal manages input pinning — no flake inputs needed.
+  # All inputs are managed by nixtamal via nilla.nix — no flake inputs needed.
   inputs = { };
 
   outputs =
     { self }:
     let
-      inputs = import ./nix/tamal { };
-      lib = import "${inputs.nixpkgs}/lib";
-      wrappers = import inputs.wrappers {
-        pkgs = { inherit lib; };
-      };
+      nilla = import ./nilla.nix;
+      systems = nilla.lib.systems;
+      lib = nilla.inputs.nixpkgs.result.lib;
       forAllSystems =
         f:
-        lib.genAttrs [
-          "x86_64-linux"
-          "aarch64-linux"
-        ] (system: f (import inputs.nixpkgs { inherit system; }));
+        lib.genAttrs systems (system: f system);
     in
     {
-      packages = forAllSystems (pkgs: {
-        default = self.packages.${pkgs.system}.direnv-sandbox;
-        sbox = pkgs.callPackage ./sbox.nix { };
-        direnv-sandbox = pkgs.stdenvNoCC.mkDerivation {
-          pname = "direnv-sandbox";
-          version = "0.1.0";
-          src = ./.;
-          installPhase = ''
-            mkdir -p $out/share/direnv-sandbox
-            mkdir -p $out/bin
-            cp direnv-sandbox.bash $out/share/direnv-sandbox/
-            cp direnv-sandbox.zsh $out/share/direnv-sandbox/
-            cp direnv-sandbox.fish $out/share/direnv-sandbox/
-            cp direnv-sandbox-cmd.bash $out/bin/direnv-sandbox
-            chmod +x $out/bin/direnv-sandbox
-          '';
-        };
-      });
+      packages = forAllSystems (system:
+        lib.mapAttrs (name: pkg: pkg.result.${system}) nilla.packages
+        // { default = nilla.packages.direnv-sandbox.result.${system}; });
 
-      nixosModules.default = self.nixosModules.direnv-sandbox;
-      nixosModules.direnv-sandbox = import ./module.nix { inherit self wrappers; };
+      nixosModules = nilla.modules.nixos or {};
 
-      devShells = forAllSystems (pkgs: {
-        default = pkgs.mkShell {
-          packages = [
-            pkgs.bubblewrap
-            pkgs.slirp4netns
-          ];
-        };
-      });
+      devShells = forAllSystems (system:
+        lib.mapAttrs (name: shell: shell.result.${system}) nilla.shells);
 
-      checks = forAllSystems (pkgs: {
-        shellcheck =
-          pkgs.runCommandLocal "shellcheck"
-            {
-              nativeBuildInputs = [ pkgs.shellcheck ];
-            }
-            ''
-              cd ${./.}
-              shellcheck direnv-sandbox.bash
-              touch $out
-            '';
-        build = self.packages.${pkgs.system}.direnv-sandbox;
-        vm-bash = import ./tests/vm.nix { inherit lib pkgs self; shell = "bash"; };
-        vm-zsh = import ./tests/vm.nix { inherit lib pkgs self; shell = "zsh"; };
-        vm-fish = import ./tests/vm.nix { inherit lib pkgs self; shell = "fish"; };
-        vm-sbox = import ./tests/sbox-vm.nix { inherit lib pkgs self; };
-      });
+      checks = forAllSystems (system:
+        let
+          pkgs = nilla.inputs.nixpkgs.result.${system};
+        in
+        {
+          shellcheck =
+            pkgs.runCommandLocal "shellcheck"
+              {
+                nativeBuildInputs = [ pkgs.shellcheck ];
+              }
+              ''
+                cd ${./.}
+                shellcheck direnv-sandbox.bash
+                touch $out
+              '';
+          build = nilla.packages.direnv-sandbox.result.${system};
+          vm-bash = import ./tests/vm.nix { inherit lib pkgs self; shell = "bash"; };
+          vm-zsh = import ./tests/vm.nix { inherit lib pkgs self; shell = "zsh"; };
+          vm-fish = import ./tests/vm.nix { inherit lib pkgs self; shell = "fish"; };
+          vm-sbox = import ./tests/sbox-vm.nix { inherit lib pkgs self; };
+        });
     };
 }

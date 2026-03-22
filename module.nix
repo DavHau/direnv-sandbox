@@ -1,4 +1,4 @@
-{ self, wrappers }:
+{ wrappers }:
 {
   lib,
   config,
@@ -9,24 +9,24 @@ let
   cfg = config.programs.direnv.sandbox;
   direnv-cfg = config.programs.direnv;
   pkg = cfg.package;
-  # Build the sbox package with module-configured overrides.
-  sboxBase = (self.packages.${pkgs.system}.sbox).override {
+  sboxPackageArgs = {
     inherit (cfg) packages shellHook;
     env = cfg.environment;
   };
 
+  # Build the sbox package with module-configured overrides.
+  sboxBase = pkgs.callPackage ./sbox.nix sboxPackageArgs;
+
   # sbox with direnv-specific bind mounts:
   #  - direnv allow/deny database (read-only)
   #  - exit-dir file for CWD sync between inner and outer shell
-  sboxDirenv = (self.packages.${pkgs.system}.sbox).override {
-    inherit (cfg) packages shellHook;
-    env = cfg.environment;
+  sboxDirenv = pkgs.callPackage ./sbox.nix (sboxPackageArgs // {
     bubblewrapArgs = [
       "--ro-bind-try" "$HOME/.local/share/direnv" "$HOME/.local/share/direnv"
       "--ro-bind-try" "$HOME/.local/share/direnv-sandbox" "$HOME/.local/share/direnv-sandbox"
       "--bind" "$_DIRENV_SANDBOX_EXIT_DIR_FILE" "$_DIRENV_SANDBOX_EXIT_DIR_FILE"
     ];
-  };
+  });
 
   bindMountArgs = flag: mounts:
     lib.concatMap (src:
@@ -64,7 +64,7 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${pkgs.system}.direnv-sandbox;
+      default = pkgs.callPackage ./direnv-sandbox.nix {};
       description = "The direnv-sandbox package to use.";
     };
 
