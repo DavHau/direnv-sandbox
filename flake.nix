@@ -1,20 +1,23 @@
 {
   description = "Bubblewrap sandboxing for direnv sessions";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-  inputs.wrappers.url = "github:lassulus/wrappers";
-  inputs.wrappers.inputs.nixpkgs.follows = "nixpkgs";
+  # Nixtamal manages input pinning — no flake inputs needed.
+  inputs = { };
 
   outputs =
-    { self, nixpkgs, wrappers }:
+    { self }:
     let
-      lib = nixpkgs.lib;
+      inputs = import ./nix/tamal { };
+      lib = import "${inputs.nixpkgs}/lib";
+      wrappers = import inputs.wrappers {
+        pkgs = { inherit lib; };
+      };
       forAllSystems =
         f:
-        nixpkgs.lib.genAttrs [
+        lib.genAttrs [
           "x86_64-linux"
           "aarch64-linux"
-        ] (system: f nixpkgs.legacyPackages.${system});
+        ] (system: f (import inputs.nixpkgs { inherit system; }));
     in
     {
       packages = forAllSystems (pkgs: {
