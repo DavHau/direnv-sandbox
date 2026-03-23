@@ -94,7 +94,9 @@ else
         rm -f $_DIRENV_SANDBOX_EXIT_DIR_FILE 2>/dev/null
     end
 
-    # Check for sandbox entry after directory changes.
+    # Core sandbox logic: find envrc, check disabled state, launch sandbox
+    # or fall back to plain direnv.  Called from the prompt hook and after
+    # direnv allow/permit/grant.
     function __direnv_sandbox_maybe_enter
         set -q _DIRENV_SANDBOX_ACTIVE; and return 0
         set -q DIRENV_SANDBOX_CMD; or return 0
@@ -121,24 +123,17 @@ else
 
     # Trigger sandbox entry on any directory change (catches z, autojump,
     # cd, pushd, popd, and any other tool that modifies PWD).
+    # The --on-variable PWD handler fires synchronously during cd,
+    # launching the sandbox subshell before the builtin even returns.
     function __direnv_sandbox_pwd_watch --on-variable PWD
         __direnv_sandbox_maybe_enter
     end
 
-    # Prompt hook: keeps direnv running for disabled-sandbox directories.
-    # Only calls direnv export when DIRENV_DIR is set (an unsandboxed direnv
-    # session is active) or when we're in a disabled-sandbox dir that hasn't
-    # been loaded yet (e.g. terminal opened directly in the project).
+    # Prompt hook: handles cases where PWD didn't change but action is
+    # needed — disabled-sandbox direnv reloads/unloads, sandbox re-enable
+    # after "direnv-sandbox on", and initial terminal startup in a project dir.
     function __direnv_sandbox_prompt_hook --on-event fish_prompt
-        set -q _DIRENV_SANDBOX_ACTIVE; and return 0
-        set -l direnv_bin (set -q DIRENV_SANDBOX_DIRENV_BIN; and echo $DIRENV_SANDBOX_DIRENV_BIN; or echo direnv)
-        if set -q DIRENV_DIR
-            # Active unsandboxed direnv session — let direnv handle reloads/unloads
-            eval ($direnv_bin export fish)
-        else if __direnv_sandbox_find_envrc; and __direnv_sandbox_is_disabled $__direnv_sandbox_project_root
-            # In a disabled-sandbox dir with no active session (e.g. terminal startup)
-            eval ($direnv_bin export fish)
-        end
+        __direnv_sandbox_maybe_enter
     end
 
     # Re-check after direnv allow/permit/grant in case we're already
