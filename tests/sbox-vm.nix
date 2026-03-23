@@ -216,5 +216,52 @@ pkgs.testers.runNixOSTest {
         )
         assert "no-tap" in val, \
             f"Expected no tap0 in --network host mode, got: {val!r}"
+
+    with subtest("share-history: host history files are accessible and writable by default"):
+        # Create history files for all three shells on the host
+        machine.succeed("su - alice -c 'echo host-bash-cmd > /home/alice/.bash_history'")
+        machine.succeed("su - alice -c 'echo host-zsh-cmd > /home/alice/.zsh_history'")
+        machine.succeed("su - alice -c 'mkdir -p /home/alice/.local/share/fish && echo host-fish-cmd > /home/alice/.local/share/fish/fish_history'")
+
+        # Verify all three are readable (no flag needed — sharing is the default)
+        val = sbox_run("cat /home/alice/.bash_history")
+        assert val == "host-bash-cmd", \
+            f"Expected host bash history inside sandbox, got: {val!r}"
+        val = sbox_run("cat /home/alice/.zsh_history")
+        assert val == "host-zsh-cmd", \
+            f"Expected host zsh history inside sandbox, got: {val!r}"
+        val = sbox_run("cat /home/alice/.local/share/fish/fish_history")
+        assert val == "host-fish-cmd", \
+            f"Expected host fish history inside sandbox, got: {val!r}"
+
+        # Verify history is writable (shells need to append)
+        sbox_run("echo sandbox-cmd >> /home/alice/.bash_history")
+        val = machine.succeed("cat /home/alice/.bash_history").strip()
+        assert "sandbox-cmd" in val, \
+            f"Expected sandbox to write to bash history, got: {val!r}"
+
+    with subtest("history project: history is persisted per-project, not shared with host"):
+        # Write something to host history — it should NOT appear in the sandbox
+        machine.succeed("su - alice -c 'echo secret-host-cmd > /home/alice/.bash_history'")
+        val = sbox_run("cat /home/alice/.bash_history 2>&1 || echo EMPTY", "--history project")
+        assert "secret-host-cmd" not in val, \
+            f"Expected host history to be isolated from sandbox, got: {val!r}"
+
+        # Write inside the sandbox — it should persist across sessions
+        sbox_run("echo sandbox-only-cmd > /home/alice/.bash_history", "--history project")
+        val = sbox_run("cat /home/alice/.bash_history", "--history project")
+        assert val == "sandbox-only-cmd", \
+            f"Expected per-project history to persist across sessions, got: {val!r}"
+
+        # Host history should be untouched
+        val = machine.succeed("cat /home/alice/.bash_history").strip()
+        assert val == "secret-host-cmd", \
+            f"Expected host history to be unchanged, got: {val!r}"
+
+    with subtest("history off: no history persistence across sessions"):
+        sbox_run("echo ephemeral-cmd > /home/alice/.bash_history", "--history off")
+        val = sbox_run("cat /home/alice/.bash_history 2>&1 || echo EMPTY", "--history off")
+        assert "ephemeral-cmd" not in val, \
+            f"Expected no history persistence with --history off, got: {val!r}"
   '';
 }

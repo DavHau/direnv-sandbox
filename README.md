@@ -91,6 +91,9 @@ programs.direnv.sandbox = {
   # The project directory itself is always mounted read-write regardless.
   allowParent = "off";
 
+  # Shell history mode: "host" (shared, default), "project" (per-project), "off"
+  shareHistory = "host";
+
   # Use host network instead of isolated slirp4netns networking
   hostNetwork = false;
 };
@@ -126,9 +129,39 @@ sbox -- make build                      # run a command inside the sandbox
 sbox -p 5432 -- psql                    # additionally forward a host port
 sbox --persist $HOME/.claude            # persist Claude Code state per-project
 sbox --persist $HOME/.npm -- npm i      # persist npm cache per-project
+sbox --history project                 # per-project isolated history
 ```
 
 Run `sbox --help` for all available options. Any options configured via the NixOS module (e.g. `bind`, `allowedTCPPorts`, `hostNetwork`) are baked into the wrapper, so `sbox` inherits your system configuration by default. Extra flags passed on the command line are appended on top.
+
+## Hardening
+
+Some defaults prioritise convenience over maximum isolation. Depending on your threat model you may want to tighten things up.
+
+### Shell history
+
+By default `shareHistory = "host"`: the host's bash, zsh, and fish history files are bind-mounted read-write into every sandbox. This is convenient (arrow-up works across projects) but means a malicious `.envrc` could read commands you typed elsewhere, potentially leaking secrets like inline passwords or tokens.
+
+Set `shareHistory = "project"` to give each project its own history that persists across sessions but never touches the host file, or `"off"` to disable history persistence entirely:
+
+```nix
+programs.direnv.sandbox.shareHistory = "project";  # per-project history
+programs.direnv.sandbox.shareHistory = "off";       # no persistence
+```
+
+With `sbox` directly:
+
+```bash
+sbox                       # shared host history (default)
+sbox --history project     # per-project history
+sbox --history off         # no persistence
+```
+
+### Other considerations
+
+- **Bind mounts** — every path added via `bind` or `bindReadOnly` is accessible to sandboxed code. Only expose what the project actually needs.
+- **Host network** — `hostNetwork = true` removes network isolation entirely. Prefer the default slirp4netns networking with explicit `allowedTCPPorts` / `exposedTCPPorts` when possible.
+- **Persist** — persisted paths are writable across sessions. A compromised project could tamper with its own persisted state on the next run.
 
 ## Running tests
 

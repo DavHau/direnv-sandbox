@@ -42,6 +42,7 @@ let
     ++ (lib.optionals cfg.hostNetwork [ "--network" "host" ])
     ++ (lib.optionals (cfg.allowParent != "off") [ "--allow-parent" cfg.allowParent ])
     ++ (lib.optionals cfg.allowAudio [ "--audio" ])
+    ++ (lib.optionals (cfg.shareHistory != "host") [ "--history" cfg.shareHistory ])
     ++ (lib.concatMap (p: [ "--persist" p ]) cfg.persist);
 
   # Standalone wrapper: bakes in module-configured args for manual use.
@@ -162,6 +163,17 @@ in
         #   "$HOME/.claude/.credentials.json" = {};
         #   "$HOME/.claude/settings.json" = {};
         # };
+      '';
+    };
+
+    shareHistory = lib.mkOption {
+      type = lib.types.enum [ "host" "project" "off" ];
+      default = "host";
+      description = ''
+        Shell history mode inside the sandbox.
+        "host" — share the host's history files read-write (default).
+        "project" — persist history per-project under $XDG_STATE_HOME/sbox/.
+        "off" — no history persistence across sessions.
       '';
     };
 

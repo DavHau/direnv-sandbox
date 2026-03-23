@@ -233,6 +233,14 @@ let
       *) WORK_DIR="$PROJECT_DIR" ;;
     esac
 
+    # Shell history sharing: bind-mount host history files into the sandbox.
+    HISTORY_ARGS=()
+    if [ "''${__SANDBOX_HISTORY_MODE:-host}" = "host" ]; then
+      HISTORY_ARGS+=(--bind-try "$HOME/.bash_history" "$HOME/.bash_history")
+      HISTORY_ARGS+=(--bind-try "$HOME/.zsh_history" "$HOME/.zsh_history")
+      HISTORY_ARGS+=(--bind-try "$HOME/.local/share/fish/fish_history" "$HOME/.local/share/fish/fish_history")
+    fi
+
     # Restore the original UID/GID inside the sandbox so the user
     # identity is preserved across the user-namespace boundary.
     ID_ARGS=()
@@ -296,6 +304,7 @@ let
       "''${PATH_BIND_ARGS[@]}" \
       "''${EDITOR_ARGS[@]}" \
       "''${EXTRA_BIND_ARGS[@]}" \
+      "''${HISTORY_ARGS[@]}" \
       ${bubblewrapArgs} \
       "''${PARENT_BIND_ARGS[@]}" \
       --bind "$PROJECT_DIR" "$PROJECT_DIR" \
@@ -316,6 +325,7 @@ let
 
     USE_HOST_NET=0
     USE_AUDIO=0
+    HISTORY_MODE="host"
     ALLOW_PARENT="off"
     HOST_PORTS=()
     SANDBOX_PORTS=()
@@ -348,6 +358,8 @@ Options:
   --persist PATH          Persist PATH across sandbox sessions. Writes are
                           stored in \$XDG_STATE_HOME (~/.local/state) keyed by
                           project directory hash. Can be repeated.
+  --history MODE          Shell history mode: "host" (shared, default), "project"
+                          (per-project), or "off" (no persistence)
   --audio                 Allow audio playback and capture (PipeWire passthrough)
   -h, --help              Show this help message
 
@@ -382,6 +394,10 @@ USAGE
         --audio)
           USE_AUDIO=1
           shift
+          ;;
+        --history)
+          HISTORY_MODE="$2"
+          shift 2
           ;;
         --allow-parent)
           ALLOW_PARENT="$2"
@@ -423,19 +439,35 @@ USAGE
       esac
     done
 
+    # Compute per-project state directory, used by --persist and history.
+    PERSIST_PROJECT_DIR="''${ARGS[0]:-$(pwd)}"
+    PERSIST_PROJECT_DIR="$(realpath -s "$PERSIST_PROJECT_DIR")"
+    PERSIST_STATE_DIR="''${XDG_STATE_HOME:-$HOME/.local/state}/sbox"
+    PROJECT_HASH="$(printf '%s\n' "$PERSIST_PROJECT_DIR" | sha256sum | cut -d' ' -f1)"
+
     # Resolve persist paths into bind mounts backed by XDG state dir.
-    # Each project gets a unique subdirectory keyed by the sha256 hash
-    # of its absolute path.
-    if [ ''${#PERSIST_ARGS[@]} -gt 0 ]; then
-      PERSIST_PROJECT_DIR="''${ARGS[0]:-$(pwd)}"
-      PERSIST_PROJECT_DIR="$(realpath -s "$PERSIST_PROJECT_DIR")"
-      PERSIST_STATE_DIR="''${XDG_STATE_HOME:-$HOME/.local/state}/sbox"
-      PROJECT_HASH="$(printf '%s\n' "$PERSIST_PROJECT_DIR" | sha256sum | cut -d' ' -f1)"
-      for p in "''${PERSIST_ARGS[@]}"; do
-        rel="''${p#/}"
+    for p in "''${PERSIST_ARGS[@]}"; do
+      rel="''${p#/}"
+      backing="$PERSIST_STATE_DIR/$PROJECT_HASH/$rel"
+      [ -d "$backing" ] || mkdir -p "$backing"
+      BIND_ARGS+=(--bind "$backing" "$p")
+    done
+
+    # When not sharing host history, persist shell history files per-project
+    # so commands typed in the sandbox survive across sessions.
+    if [ "$HISTORY_MODE" = "project" ]; then
+      HISTORY_FILES=(
+        "$HOME/.bash_history"
+        "$HOME/.zsh_history"
+        "$HOME/.local/share/fish/fish_history"
+      )
+      for hf in "''${HISTORY_FILES[@]}"; do
+        rel="''${hf#/}"
         backing="$PERSIST_STATE_DIR/$PROJECT_HASH/$rel"
-        mkdir -p "$backing"
-        BIND_ARGS+=(--bind "$backing" "$p")
+        backing_dir="$(dirname "$backing")"
+        [ -d "$backing_dir" ] || mkdir -p "$backing_dir"
+        [ -f "$backing" ] || touch "$backing"
+        BIND_ARGS+=(--bind "$backing" "$hf")
       done
     fi
 
@@ -454,6 +486,7 @@ USAGE
       __SANDBOX_UID="$ORIG_UID" \
       __SANDBOX_GID="$ORIG_GID" \
       __SANDBOX_USE_AUDIO="$USE_AUDIO" \
+      __SANDBOX_HISTORY_MODE="$HISTORY_MODE" \
         exec ${util-linux}/bin/unshare --user --map-root-user \
           -- ${innerScript} "''${INNER_ARGS[@]}"
     fi
@@ -529,6 +562,7 @@ USAGE
     __SANDBOX_UID="$ORIG_UID" \
     __SANDBOX_GID="$ORIG_GID" \
     __SANDBOX_USE_AUDIO="$USE_AUDIO" \
+    __SANDBOX_HISTORY_MODE="$HISTORY_MODE" \
       ${util-linux}/bin/unshare --user --map-root-user --net \
         -- ${innerScript} "''${INNER_ARGS[@]}"
   '';
