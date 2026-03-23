@@ -187,10 +187,13 @@ let
       done
     fi
 
-    # Extra bind mounts passed from the outer script.
+    # Extra bind mounts passed from the outer script via null-delimited file.
     EXTRA_BIND_ARGS=()
-    if [ -n "''${__SANDBOX_BIND_ARGS:-}" ]; then
-      read -ra EXTRA_BIND_ARGS <<< "$__SANDBOX_BIND_ARGS"
+    if [ -n "''${__SANDBOX_BIND_ARGS_FILE:-}" ] && [ -s "$__SANDBOX_BIND_ARGS_FILE" ]; then
+      while IFS= read -r -d "" arg; do
+        EXTRA_BIND_ARGS+=("$arg")
+      done < "$__SANDBOX_BIND_ARGS_FILE"
+      rm -f "$__SANDBOX_BIND_ARGS_FILE"
     fi
 
     # Sort extra bind mounts by destination path so that parent mounts
@@ -482,7 +485,12 @@ USAGE
     ORIG_GID=$(id -g)
 
     # Common env vars passed to the inner script in both network modes.
-    export __SANDBOX_BIND_ARGS="''${BIND_ARGS[*]}"
+    # Bind args are passed via a null-delimited file to preserve paths with spaces.
+    BIND_ARGS_FILE=$(mktemp)
+    if [ ''${#BIND_ARGS[@]} -gt 0 ]; then
+      printf '%s\0' "''${BIND_ARGS[@]}" > "$BIND_ARGS_FILE"
+    fi
+    export __SANDBOX_BIND_ARGS_FILE="$BIND_ARGS_FILE"
     export __SANDBOX_ALLOW_PARENT="$ALLOW_PARENT"
     export __SANDBOX_UID="$ORIG_UID"
     export __SANDBOX_GID="$ORIG_GID"

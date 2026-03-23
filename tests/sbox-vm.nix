@@ -31,8 +31,8 @@ pkgs.testers.runNixOSTest {
       system.activationScripts.createProject = {
         deps = [ "users" ];
         text = ''
-          mkdir -p /home/alice/project
-          chown -R alice:users /home/alice/project
+          mkdir -p "/home/alice/my project"
+          chown -R alice:users "/home/alice/my project"
         '';
       };
     };
@@ -59,26 +59,32 @@ pkgs.testers.runNixOSTest {
 
     test_driver.machine.retry = fast_retry
 
-    project = "/home/alice/project"
+    project = "/home/alice/my project"
 
     machine.wait_for_unit("multi-user.target")
 
     def sbox_run(cmd, args=""):
         """Run a command inside sbox and return its stdout."""
-        marker = "/tmp/sbox-result"
-        machine.execute(f"rm -f {marker}")
-        machine.succeed(
-            f"su - alice -c 'cd {project} && sbox {args} {project} -- bash -c \"({cmd}) > {project}/result\"'"
-        )
-        return machine.succeed(f"cat {project}/result").strip()
+        import base64
+        result_file = f"{project}/result"
+        cmd_file = f"{project}/_cmd.sh"
+        machine.execute(f"rm -f '{result_file}'")
+        # Write inner command to a script inside the project dir (visible in sandbox).
+        inner = f"({cmd}) > '{result_file}'\n"
+        machine.succeed(f"echo '{base64.b64encode(inner.encode()).decode()}' | base64 -d > '{cmd_file}'")
+        # Write the sbox invocation to a host script to avoid nested quoting issues.
+        outer = f'cd "{project}" && sbox {args} "{project}" -- bash "{cmd_file}"\n'
+        machine.succeed(f"echo '{base64.b64encode(outer.encode()).decode()}' | base64 -d > /tmp/sbox-run.sh")
+        machine.succeed("su - alice -c 'bash /tmp/sbox-run.sh'")
+        return machine.succeed(f"cat '{result_file}'").strip()
 
     with subtest("basic sandbox: SANDBOX=1 is set"):
-        val = sbox_run("echo \$SANDBOX")
+        val = sbox_run("echo $SANDBOX")
         assert val == "1", f"Expected SANDBOX=1, got: {val!r}"
 
     with subtest("basic sandbox: project dir is writable"):
-        sbox_run(f"touch {project}/write-test")
-        machine.succeed(f"test -f {project}/write-test")
+        sbox_run(f"touch '{project}/write-test'")
+        machine.succeed(f"test -f '{project}/write-test'")
 
     with subtest("basic sandbox: /tmp is isolated"):
         machine.succeed("su - alice -c 'echo host-secret > /tmp/host-file'")
@@ -88,12 +94,12 @@ pkgs.testers.runNixOSTest {
 
     with subtest("basic sandbox: PS1 is prefixed with [sandbox]"):
         # Write a helper script to avoid quoting issues
-        machine.succeed(f"echo 'echo \"$PS1\" > {project}/ps1-out' > {project}/check-ps1.sh")
-        machine.succeed(f"chmod +x {project}/check-ps1.sh")
+        machine.succeed(f"echo 'echo \"$PS1\" > \"{project}/ps1-out\"' > \"{project}/check-ps1.sh\"")
+        machine.succeed(f"chmod +x \"{project}/check-ps1.sh\"")
         machine.succeed(
-            f"su - alice -c 'cd {project} && sbox {project} -- bash -i {project}/check-ps1.sh'"
+            f"su - alice -c 'cd \"{project}\" && sbox \"{project}\" -- bash -i \"{project}/check-ps1.sh\"'"
         )
-        val = machine.succeed(f"cat {project}/ps1-out").strip()
+        val = machine.succeed(f"cat \"{project}/ps1-out\"").strip()
         assert val.startswith("[sandbox]"), \
             f"Expected PS1 to start with '[sandbox]', got: {val!r}"
 
@@ -124,15 +130,15 @@ pkgs.testers.runNixOSTest {
         # then verify the host can reach it via 127.0.0.1:8888.
         machine.succeed(
             f"su - alice -c '"
-            f"sbox --expose-port 8888 {project} -- bash -c \""
+            f"sbox --expose-port 8888 \"{project}\" -- bash -c \""
             f"echo sandbox-hello | nc -l 0.0.0.0 8888 &"
             f"sleep 1; "
-            f"echo LISTENING > {project}/sandbox-ready; "
+            f"echo LISTENING > \\\"{project}/sandbox-ready\\\"; "
             f"sleep 30"
             f"\" &' >&2"
         )
 
-        machine.wait_until_succeeds(f"test -s {project}/sandbox-ready", timeout=30)
+        machine.wait_until_succeeds(f"test -s \"{project}/sandbox-ready\"", timeout=30)
         val = machine.wait_until_succeeds("nc -w 1 127.0.0.1 8888", timeout=15).strip()
         assert "sandbox-hello" in val, \
             f"Expected 'sandbox-hello' from sandbox service via --expose-port, got: {val!r}"
@@ -148,15 +154,15 @@ pkgs.testers.runNixOSTest {
             f"Expected GID {host_gid} inside sandbox, got: {sandbox_gid!r}"
 
     with subtest("persist: data survives across sessions"):
-        # First session: write a file into the persisted path
+        # First session: write a file into the persisted path (path with space)
         sbox_run(
-            "mkdir -p /home/alice/.teststate && echo persist-ok > /home/alice/.teststate/marker",
-            "--persist /home/alice/.teststate",
+            "mkdir -p '/home/alice/my state' && echo persist-ok > '/home/alice/my state/marker'",
+            "'--persist' '/home/alice/my state'",
         )
         # Second session: verify the file is still there
         val = sbox_run(
-            "cat /home/alice/.teststate/marker",
-            "--persist /home/alice/.teststate",
+            "cat '/home/alice/my state/marker'",
+            "'--persist' '/home/alice/my state'",
         )
         assert val == "persist-ok", \
             f"Expected persisted data to survive across sessions, got: {val!r}"
@@ -166,7 +172,7 @@ pkgs.testers.runNixOSTest {
             f"printf '%s\\n' '{project}' | sha256sum | cut -d' ' -f1"
         ).strip()
         machine.succeed(
-            f"test -d /home/alice/.local/state/sbox/{project_hash}/home/alice/.teststate"
+            f"test -d '/home/alice/.local/state/sbox/{project_hash}/home/alice/my state'"
         )
 
     with subtest("persist: multiple paths work"):
@@ -180,23 +186,23 @@ pkgs.testers.runNixOSTest {
         assert val2 == "b", f"Expected 'b' from second persist path, got: {val2!r}"
 
     with subtest("persist: ro-bind inside persisted dir overlays correctly"):
-        # Create a host file that should appear read-only inside the persisted dir
-        machine.succeed("su - alice -c 'mkdir -p /home/alice/.hoststate && echo host-secret > /home/alice/.hoststate/creds'")
+        # Create a host file that should appear read-only inside the persisted dir (path with space)
+        machine.succeed("su - alice -c 'mkdir -p \"/home/alice/host state\" && echo host-secret > \"/home/alice/host state/creds\"'")
         # Persist the dir, but ro-bind a file from the host on top of a subpath
         val = sbox_run(
-            "cat /home/alice/.testoverlay/creds",
-            "--persist /home/alice/.testoverlay --ro-bind /home/alice/.hoststate/creds /home/alice/.testoverlay/creds",
+            "cat '/home/alice/test overlay/creds'",
+            "'--persist' '/home/alice/test overlay' '--ro-bind' '/home/alice/host state/creds' '/home/alice/test overlay/creds'",
         )
         assert val == "host-secret", \
             f"Expected host file visible inside persisted dir, got: {val!r}"
         # Verify the rest of the persisted dir is still writable
         sbox_run(
-            "echo writable > /home/alice/.testoverlay/newfile",
-            "--persist /home/alice/.testoverlay --ro-bind /home/alice/.hoststate/creds /home/alice/.testoverlay/creds",
+            "echo writable > '/home/alice/test overlay/newfile'",
+            "'--persist' '/home/alice/test overlay' '--ro-bind' '/home/alice/host state/creds' '/home/alice/test overlay/creds'",
         )
         val = sbox_run(
-            "cat /home/alice/.testoverlay/newfile",
-            "--persist /home/alice/.testoverlay",
+            "cat '/home/alice/test overlay/newfile'",
+            "'--persist' '/home/alice/test overlay'",
         )
         assert val == "writable", \
             f"Expected persisted write to survive, got: {val!r}"
