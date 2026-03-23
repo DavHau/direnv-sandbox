@@ -40,12 +40,16 @@
   bubblewrapArgs ? [],
   env ? {},
   shellHook ? "",
-} @ attrs:
+}:
 let
-  bubblewrapArgs = builtins.concatStringsSep " " attrs.bubblewrapArgs or [];
-  env =
+  escapeArg = arg:
+    let
+      escaped = lib.replaceStrings [ "\\" ''"'' ] [ "\\\\" ''\"'' ] (toString arg);
+    in ''"${escaped}"'';
+  extraBwrapArgs = builtins.concatStringsSep " " (map escapeArg bubblewrapArgs);
+  extraEnv =
     lib.concatStringsSep " "
-    (lib.mapAttrsToList (k: v: "--setenv ${k} ${lib.escapeShellArg v}") attrs.env or {});
+    (lib.mapAttrsToList (k: v: "--setenv ${k} ${escapeArg v}") env);
   customHosts = writeText "hosts" ''
     127.0.0.1 localhost
     ::1 localhost ip6-localhost ip6-loopback
@@ -296,7 +300,7 @@ let
       "''${PATH_BIND_ARGS[@]}" \
       "''${EDITOR_ARGS[@]}" \
       "''${EXTRA_BIND_ARGS[@]}" \
-      ${bubblewrapArgs} \
+      ${extraBwrapArgs} \
       "''${PARENT_BIND_ARGS[@]}" \
       --bind "$PROJECT_DIR" "$PROJECT_DIR" \
       --chdir "$WORK_DIR" \
@@ -304,7 +308,7 @@ let
       --setenv USER $USER \
       --setenv SANDBOX 1 \
       --setenv PATH "${lib.makeBinPath packages}:$SANDBOX_PATH" \
-      ${env} \
+      ${extraEnv} \
       "''${SANDBOX_ENTRYPOINT[@]}"
   '';
 
