@@ -31,6 +31,16 @@ nilla.create (
             };
           };
         };
+
+        home-manager = {
+          src = tamal.home-manager;
+          loader = "raw";
+        };
+
+        nilla-cli = {
+          src = tamal.nilla-cli;
+          loader = "nilla";
+        };
       };
 
       packages = {
@@ -52,12 +62,17 @@ nilla.create (
             mkShell,
             bubblewrap,
             slirp4netns,
+            system,
             ...
           }:
+          let
+            nilla-cli = config.inputs.nilla-cli.result.packages.nilla-cli.result.${system};
+          in
           mkShell {
             packages = [
               bubblewrap
               slirp4netns
+              nilla-cli
             ];
           };
       };
@@ -65,6 +80,11 @@ nilla.create (
       modules.nixos = {
         default = import ./module.nix { inherit wrappers; };
         direnv-sandbox = import ./module.nix { inherit wrappers; };
+      };
+
+      modules.homeManager = {
+        default = import ./hm-module.nix { inherit wrappers; };
+        direnv-sandbox = import ./hm-module.nix { inherit wrappers; };
       };
     };
   }

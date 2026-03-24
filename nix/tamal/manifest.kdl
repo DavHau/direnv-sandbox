@@ -34,4 +34,24 @@ inputs {
 			| cut -f1
 		}
 	}
+	nilla-cli {
+		archive fetch-time=eval {
+			url "https://github.com/nilla-nix/cli/archive/{{fresh_value}}.tar.gz"
+		}
+		hash algorithm=SHA-256
+		fresh-cmd {
+			$ git ls-remote --heads "https://github.com/nilla-nix/cli.git" --refs "refs/heads/main"
+			| cut -f1
+		}
+	}
+	home-manager {
+		archive fetch-time=eval {
+			url "https://github.com/nix-community/home-manager/archive/{{fresh_value}}.tar.gz"
+		}
+		hash algorithm=SHA-256
+		fresh-cmd {
+			$ git ls-remote --heads "https://github.com/nix-community/home-manager.git" --refs "refs/heads/master"
+			| cut -f1
+		}
+	}
 }

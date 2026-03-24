@@ -27,7 +27,7 @@ When you `cd` into a project with an allowed `.envrc`, the shell hook detects it
 - Read-write bind mounts for paths the project needs
 - GPU passthrough (NVIDIA + DRI devices)
 - `$PATH` entries from the host are mounted read-only
-- NixOS module with declarative configuration
+- NixOS and Home Manager modules with declarative configuration
 - Full NixOS VM integration tests for all three shells
 
 ## Installation
@@ -59,6 +59,25 @@ Add direnv-sandbox as a flake input and enable the NixOS module:
 ```
 
 That's it. The module replaces direnv's shell hooks with sandbox-aware versions.
+
+### Home Manager
+
+direnv-sandbox also works as a [Home Manager](https://github.com/nix-community/home-manager) module, for standalone Home Manager setups or when you prefer per-user configuration:
+
+```nix
+# home.nix
+{ inputs, ... }:
+{
+  imports = [ inputs.direnv-sandbox.homeManagerModules.direnv-sandbox ];
+
+  programs.direnv = {
+    enable = true;
+    sandbox.enable = true;
+  };
+}
+```
+
+The configuration options are identical to the NixOS module — see below.
 
 ## Configuration
 

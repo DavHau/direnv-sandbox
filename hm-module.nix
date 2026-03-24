@@ -21,30 +21,26 @@ in
 
   config = lib.mkMerge [
     (lib.mkIf cfg.sbox.enable {
-      environment.systemPackages = [ pkgs.bubblewrap sandboxLib.sboxWrapped ];
+      home.packages = [ pkgs.bubblewrap sandboxLib.sboxWrapped ];
     })
 
     (lib.mkIf (direnv-cfg.enable && cfg.enable) {
-      environment.systemPackages = [ pkg ];
+      home.packages = [ pkg ];
 
       # Disable direnv's own shell integration — we replace it with sandbox-aware hooks.
-      # This only disables the eval "$(direnv hook <shell>)" lines, not other
-      # interactiveShellInit content from other modules.
       programs.direnv = {
         enableBashIntegration = lib.mkForce false;
         enableZshIntegration = lib.mkForce false;
         enableFishIntegration = lib.mkForce false;
       };
 
-      # Add sandbox-aware hook sourcing. These append normally to
-      # interactiveShellInit without overriding other modules' content.
-      programs.bash.interactiveShellInit = ''
+      programs.bash.initExtra = ''
         DIRENV_SANDBOX_CMD=("${lib.getExe cfg.sandboxCommand}")
         DIRENV_SANDBOX_DIRENV_BIN="${lib.getExe direnv-cfg.package}"
         source "${pkg}/share/direnv-sandbox/direnv-sandbox.bash"
       '';
 
-      programs.zsh.interactiveShellInit = ''
+      programs.zsh.initContent = ''
         DIRENV_SANDBOX_CMD=("${lib.getExe cfg.sandboxCommand}")
         DIRENV_SANDBOX_DIRENV_BIN="${lib.getExe direnv-cfg.package}"
         source "${pkg}/share/direnv-sandbox/direnv-sandbox.zsh"
@@ -54,9 +50,6 @@ in
       # which auto-hooks direnv regardless of enableFishIntegration. Since
       # vendor_conf.d is sourced before interactiveShellInit, we erase its
       # functions here and replace them with our sandbox-aware hook.
-      # This goes into /etc/fish/config.fish via the NixOS fish module,
-      # which fish sources via its built-in NixOS support (even inside bwrap,
-      # as long as /etc/fish is bind-mounted).
       programs.fish.interactiveShellInit = ''
         functions --erase __direnv_export_eval 2>/dev/null
         functions --erase __direnv_cd_hook 2>/dev/null

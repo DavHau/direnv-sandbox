@@ -22,12 +22,15 @@
 
       nixosModules = nilla.modules.nixos or {};
 
+      homeManagerModules = nilla.modules.homeManager or {};
+
       devShells = forAllSystems (system:
         lib.mapAttrs (name: shell: shell.result.${system}) nilla.shells);
 
       checks = forAllSystems (system:
         let
           pkgs = nilla.inputs.nixpkgs.result.${system};
+          home-manager-src = nilla.inputs.home-manager.result;
         in
         {
           shellcheck =
@@ -44,6 +47,9 @@
           vm-bash = import ./tests/vm.nix { inherit lib pkgs self; shell = "bash"; };
           vm-zsh = import ./tests/vm.nix { inherit lib pkgs self; shell = "zsh"; };
           vm-fish = import ./tests/vm.nix { inherit lib pkgs self; shell = "fish"; };
+          vm-hm-bash = import ./tests/hm-vm.nix { inherit lib pkgs self home-manager-src; shell = "bash"; };
+          vm-hm-zsh = import ./tests/hm-vm.nix { inherit lib pkgs self home-manager-src; shell = "zsh"; };
+          vm-hm-fish = import ./tests/hm-vm.nix { inherit lib pkgs self home-manager-src; shell = "fish"; };
           vm-sbox = import ./tests/sbox-vm.nix { inherit lib pkgs self; };
           vm-audio = import ./tests/audio-vm.nix { inherit lib pkgs self; };
         });
