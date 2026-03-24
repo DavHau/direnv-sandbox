@@ -5,9 +5,9 @@
 # In fish, `case "$VAR/"*` is a glob pattern. If nothing matches the wildcard,
 # fish prints "No matches for wildcard" to stderr. This test ensures the exit
 # check uses `string match` instead of `case` with globs.
-{ pkgs }:
-pkgs.runCommandLocal "fish-exit-glob" {
-  nativeBuildInputs = [ pkgs.fish ];
+{ runCommandLocal, fish }:
+runCommandLocal "fish-exit-glob" {
+  nativeBuildInputs = [ fish ];
 } ''
   # Create a project dir with only a dotfile (no glob-visible children)
   PROJECT=$(mktemp -d)

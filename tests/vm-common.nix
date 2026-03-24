@@ -2,8 +2,11 @@
 # Both the NixOS module test (vm.nix) and the Home Manager module test (hm-vm.nix)
 # call this with their respective node configuration.
 {
-  pkgs,
   lib,
+  testers,
+  bash,
+  zsh,
+  fish,
   shell ? "bash",
   # Test name prefix, e.g. "direnv-sandbox" or "direnv-sandbox-hm"
   name,
@@ -12,9 +15,7 @@
 }:
 let
   shellPkgs = {
-    bash = pkgs.bashInteractive;
-    zsh = pkgs.zsh;
-    fish = pkgs.fish;
+    inherit bash zsh fish;
   };
 
   # Shell-specific command to check that SANDBOX_TEST is unset.
@@ -91,7 +92,7 @@ in
 {
   inherit shellPkgs mkProjectActivationScript;
 
-  test = pkgs.testers.runNixOSTest {
+  test = testers.runNixOSTest {
     name = "${name}-${shell}";
 
     nodes.machine = nodeConfig;

@@ -1,10 +1,15 @@
-{ pkgs, lib, self, shell ? "bash" }:
+{ nixosModule, shell ? "bash" }:
+{ lib, testers, bash, zsh, fish, ... }:
 let
-  common = import ./vm-common.nix { inherit pkgs lib shell; name = "direnv-sandbox"; nodeConfig = nodeConfig; };
+  common = import ./vm-common.nix {
+    inherit lib testers bash zsh fish shell;
+    name = "direnv-sandbox";
+    nodeConfig = nodeConfig;
+  };
   nodeConfig =
     { pkgs, ... }:
     {
-      imports = [ self.nixosModules.direnv-sandbox ];
+      imports = [ nixosModule ];
 
       networking.useDHCP = false;
 

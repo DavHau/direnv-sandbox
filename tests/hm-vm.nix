@@ -1,9 +1,14 @@
 # VM tests for the Home Manager module.
 # Uses the same test script as vm.nix via vm-common.nix, but configures
 # direnv-sandbox through home-manager instead of the NixOS module.
-{ pkgs, lib, self, home-manager-src, shell ? "bash" }:
+{ homeManagerModule, home-manager-src, shell ? "bash" }:
+{ lib, testers, bash, zsh, fish, ... }:
 let
-  common = import ./vm-common.nix { inherit pkgs lib shell; name = "direnv-sandbox-hm"; nodeConfig = nodeConfig; };
+  common = import ./vm-common.nix {
+    inherit lib testers bash zsh fish shell;
+    name = "direnv-sandbox-hm";
+    nodeConfig = nodeConfig;
+  };
   nodeConfig =
     { pkgs, ... }:
     {
@@ -27,7 +32,7 @@ let
       home-manager.useGlobalPkgs = true;
       home-manager.useUserPackages = true;
       home-manager.users.alice = {
-        imports = [ self.homeManagerModules.direnv-sandbox ];
+        imports = [ homeManagerModule ];
 
         home.stateVersion = "24.11";
 

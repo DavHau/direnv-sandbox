@@ -1,11 +1,12 @@
 # VM tests for sbox (the bubblewrap sandbox wrapper) independent of direnv.
 # Tests: basic sandboxing, --host-port, --sandbox-port, --network host.
-{ pkgs, lib, self }:
+{ sboxPackage }:
+{ lib, testers, python3, socat, curl, netcat, callPackage, ... }:
 let
-  sbox = self.packages.${pkgs.system}.sbox;
-  pythonWithPkgs = pkgs.python3.withPackages (ps: [ ps.requests ]);
+  sbox = callPackage sboxPackage { };
+  pythonWithPkgs = python3.withPackages (ps: [ ps.requests ]);
 in
-pkgs.testers.runNixOSTest {
+testers.runNixOSTest {
   name = "sbox";
 
   nodes.machine =
@@ -17,7 +18,7 @@ pkgs.testers.runNixOSTest {
       users.users.alice = {
         isNormalUser = true;
         password = "foobar";
-        shell = pkgs.bashInteractive;
+        shell = pkgs.bash;
       };
 
       environment.systemPackages = [

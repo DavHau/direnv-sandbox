@@ -2,11 +2,12 @@
 # Verifies that audio actually flows through PipeWire from inside the sandbox
 # via native PipeWire, PulseAudio, and ALSA APIs by playing a tone and
 # recording it back, then checking for non-silence.
-{ pkgs, lib, self }:
+{ sboxPackage }:
+{ lib, testers, callPackage, ... }:
 let
-  sbox = self.packages.${pkgs.system}.sbox;
+  sbox = callPackage sboxPackage { };
 in
-pkgs.testers.runNixOSTest {
+testers.runNixOSTest {
   name = "sbox-audio";
 
   nodes.machine =
@@ -17,7 +18,7 @@ pkgs.testers.runNixOSTest {
       users.users.alice = {
         isNormalUser = true;
         password = "foobar";
-        shell = pkgs.bashInteractive;
+        shell = pkgs.bash;
       };
 
       services.pipewire = {
