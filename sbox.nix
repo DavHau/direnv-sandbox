@@ -378,9 +378,10 @@ If COMMAND is given (after --), it is executed inside the sandbox instead of
 an interactive shell.
 
 Options:
-  --network host          Use the host network instead of an isolated namespace
+  --network isolated      Isolated namespace with user-mode networking (default)
   --network blocked       Block all network access (loopback only); port
                           forwarding via --allow-port and --expose-port still works
+  --network host          Use the host network instead of an isolated namespace
   --allow-parent MODE     Mount the parent of the project directory inside the
                           sandbox. MODE is "ro" (read-only) or "rw" (read-write)
   --allow-port, -p PORT   Forward a host TCP port into the sandbox
@@ -415,9 +416,10 @@ USAGE
           ;;
         --network)
           case "''${2:-}" in
-            host)    USE_HOST_NET=1; shift 2 ;;
-            blocked) USE_NO_NET=1;   shift 2 ;;
-            *) echo "Error: --network requires 'host' or 'blocked' as argument" >&2; exit 1 ;;
+            isolated) shift 2 ;;
+            host)     USE_HOST_NET=1; shift 2 ;;
+            blocked)  USE_NO_NET=1;   shift 2 ;;
+            *) echo "Error: --network requires 'isolated', 'blocked', or 'host' as argument" >&2; exit 1 ;;
           esac
           ;;
         --persist)

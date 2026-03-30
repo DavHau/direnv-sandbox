@@ -76,10 +76,16 @@
     '';
   };
 
-  hostNetwork = lib.mkOption {
-    type = lib.types.bool;
-    default = false;
-    description = "Use host network instead of isolated network namespace.";
+  network = lib.mkOption {
+    type = lib.types.enum [ "isolated" "blocked" "host" ];
+    default = "isolated";
+    description = ''
+      Network mode for the sandbox.
+      "isolated" — isolated namespace with user-mode networking via slirp4netns (default).
+      "blocked" — isolated namespace with loopback only; all internet/LAN access
+        is blocked, but --allow-port and --expose-port forwarding still works.
+      "host" — use the host network directly (no isolation).
+    '';
   };
 
   persist = lib.mkOption {

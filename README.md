@@ -23,6 +23,7 @@ When you `cd` into a project with an allowed `.envrc`, the shell hook detects it
 - Per-directory opt-out — `direnv-sandbox off` to disable sandboxing for trusted projects
 - Isolated PID, IPC, UTS, cgroup, and network namespaces
 - User-mode networking via slirp4netns (no root required)
+- Optional fully blocked network mode (loopback only, no internet/LAN)
 - Optional access to host services via TCP port forwarding
 - Read-write bind mounts for paths the project needs
 - GPU passthrough (NVIDIA + DRI devices)
@@ -116,8 +117,9 @@ programs.direnv.sandbox = {
   # Share ~/.ssh/known_hosts read-only (default: true)
   shareKnownHosts = true;
 
-  # Use host network instead of isolated slirp4netns networking
-  hostNetwork = false;
+  # Network mode: "isolated" (default, user-mode networking), "blocked"
+  # (loopback only, no internet), or "host" (no isolation)
+  network = "isolated";
 };
 ```
 
@@ -148,13 +150,16 @@ The `sbox` command is available on your `$PATH` when the module is enabled. It l
 sbox                                    # sandbox the current directory
 sbox ~/projects/myapp                   # sandbox a specific directory
 sbox -- make build                      # run a command inside the sandbox
-sbox -p 5432 -- psql                    # additionally forward a host port
+sbox --allow-port 5432 -- psql          # forward a host port into the sandbox
+sbox --expose-port 8080                 # expose a sandbox port to the host
+sbox --network blocked                  # block all internet access
+sbox --network blocked --allow-port 5432  # blocked + forward a host port
 sbox --persist $HOME/.claude            # persist Claude Code state per-project
 sbox --persist $HOME/.npm -- npm i      # persist npm cache per-project
 sbox --history project                 # per-project isolated history
 ```
 
-Run `sbox --help` for all available options. Any options configured via the NixOS module (e.g. `bind`, `allowedTCPPorts`, `hostNetwork`) are baked into the wrapper, so `sbox` inherits your system configuration by default. Extra flags passed on the command line are appended on top.
+Run `sbox --help` for all available options. Any options configured via the NixOS module (e.g. `bind`, `allowedTCPPorts`, `network`) are baked into the wrapper, so `sbox` inherits your system configuration by default. Extra flags passed on the command line are appended on top.
 
 ## Hardening
 
@@ -195,10 +200,32 @@ With `sbox` directly:
 sbox --no-known-hosts    # don't share known_hosts
 ```
 
+### Network mode
+
+By default `network = "isolated"`: the sandbox has full internet access through user-mode networking (slirp4netns). This lets projects fetch dependencies, call APIs, etc.
+
+Set `network = "blocked"` to cut off all internet and LAN access. The sandbox gets only a loopback interface — processes can talk to each other on `localhost` but cannot reach anything outside. Port forwarding via `allowedTCPPorts` / `exposedTCPPorts` still works, so you can grant access to specific host services (e.g. a local database) without opening the network:
+
+```nix
+programs.direnv.sandbox = {
+  network = "blocked";
+  allowedTCPPorts = [ 5432 ];  # only PostgreSQL, nothing else
+};
+```
+
+With `sbox` directly:
+
+```bash
+sbox --network blocked                  # loopback only
+sbox --network blocked --allow-port 5432  # loopback + host PostgreSQL
+sbox --network blocked --expose-port 8080  # loopback + expose sandbox port
+sbox --network host                     # no network isolation at all
+```
+
 ### Other considerations
 
 - **Bind mounts** — every path added via `bind` or `bindReadOnly` is accessible to sandboxed code. Only expose what the project actually needs.
-- **Host network** — `hostNetwork = true` removes network isolation entirely. Prefer the default slirp4netns networking with explicit `allowedTCPPorts` / `exposedTCPPorts` when possible.
+- **Host network** — `network = "host"` removes network isolation entirely. Prefer the default isolated networking with explicit `allowedTCPPorts` / `exposedTCPPorts` when possible, or `"blocked"` for maximum isolation.
 - **Persist** — persisted paths are writable across sessions. A compromised project could tamper with its own persisted state on the next run.
 
 ## Running tests
