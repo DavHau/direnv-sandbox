@@ -33,6 +33,7 @@
   socat,
   cacert,
   coreutils,
+  iproute2,
   bash,
   writeText,
   # configuration of the wrapper
@@ -200,6 +201,19 @@ let
       done
     fi
 
+    # Start reverse port forwarders for --expose-port in blocked mode.
+    # Each listens on a UNIX socket and connects to the sandbox's
+    # 127.0.0.1:PORT. The host-side socat bridges incoming host
+    # connections to these sockets.
+    if [ -n "''${__SANDBOX_EXPOSE_PORTS:-}" ]; then
+      read -ra EXP_PORTS <<< "$__SANDBOX_EXPOSE_PORTS"
+      for port in "''${EXP_PORTS[@]}"; do
+        ${socat}/bin/socat \
+          UNIX-LISTEN:"''${__SANDBOX_WORK}/expose-$port.sock",fork \
+          TCP4:127.0.0.1:"$port" >/dev/null 2>&1 &
+      done
+    fi
+
     # Extra bind mounts passed from the outer script via null-delimited file.
     EXTRA_BIND_ARGS=()
     if [ -n "''${__SANDBOX_BIND_ARGS_FILE:-}" ] && [ -s "$__SANDBOX_BIND_ARGS_FILE" ]; then
@@ -340,6 +354,7 @@ let
     set -euo pipefail
 
     USE_HOST_NET=0
+    USE_NO_NET=0
     USE_AUDIO=0
     SHARE_KNOWN_HOSTS=1
     HISTORY_MODE="host"
@@ -364,6 +379,8 @@ an interactive shell.
 
 Options:
   --network host          Use the host network instead of an isolated namespace
+  --network blocked       Block all network access (loopback only); port
+                          forwarding via --allow-port and --expose-port still works
   --allow-parent MODE     Mount the parent of the project directory inside the
                           sandbox. MODE is "ro" (read-only) or "rw" (read-write)
   --allow-port, -p PORT   Forward a host TCP port into the sandbox
@@ -397,13 +414,11 @@ USAGE
           usage
           ;;
         --network)
-          if [ "''${2:-}" = "host" ]; then
-            USE_HOST_NET=1
-            shift 2
-          else
-            echo "Error: --network requires 'host' as argument" >&2
-            exit 1
-          fi
+          case "''${2:-}" in
+            host)    USE_HOST_NET=1; shift 2 ;;
+            blocked) USE_NO_NET=1;   shift 2 ;;
+            *) echo "Error: --network requires 'host' or 'blocked' as argument" >&2; exit 1 ;;
+          esac
           ;;
         --persist)
           PERSIST_ARGS+=("$2")
@@ -540,7 +555,7 @@ USAGE
     WORK=$(mktemp -d)
 
     cleanup() {
-      kill "$SLIRP_PID" 2>/dev/null || :
+      [ -n "''${SLIRP_PID:-}" ] && kill "$SLIRP_PID" 2>/dev/null || :
       for pid in "''${SOCAT_PIDS[@]}"; do
         kill "$pid" 2>/dev/null || :
       done
@@ -558,6 +573,46 @@ USAGE
       SOCAT_PIDS+=($!)
     done
 
+    # Start host-side listeners for --expose-port. Each waits for the
+    # inner socat to create a UNIX socket, then bridges host
+    # 127.0.0.1:PORT → that socket → sandbox 127.0.0.1:PORT.
+    # Used in both default (slirp4netns) and blocked modes.
+    if [ ''${#SANDBOX_PORTS[@]} -gt 0 ]; then
+      for port in "''${SANDBOX_PORTS[@]}"; do
+        (
+          while [ ! -S "$WORK/expose-$port.sock" ]; do sleep 0.1; done
+          exec ${socat}/bin/socat \
+            TCP4-LISTEN:"$port",bind=127.0.0.1,fork,reuseaddr \
+            UNIX-CONNECT:"$WORK/expose-$port.sock"
+        ) &
+        SOCAT_PIDS+=($!)
+      done
+    fi
+
+    export __SANDBOX_FORWARD_PORTS="''${HOST_PORTS[*]}"
+    export __SANDBOX_EXPOSE_PORTS="''${SANDBOX_PORTS[*]}"
+    export __SANDBOX_WORK="$WORK"
+
+    # -----------------------------------------------------------------------
+    # --network blocked: isolated namespace with loopback only (no slirp4netns)
+    # -----------------------------------------------------------------------
+    if [ "$USE_NO_NET" = 1 ]; then
+      RESOLV="$WORK/resolv.conf"
+      # Empty resolv.conf — no DNS available in blocked mode.
+      echo "# network blocked — no DNS available" > "$RESOLV"
+      export __SANDBOX_RESOLV="$RESOLV"
+
+      SLIRP_PID=""
+      # In blocked mode there is no slirp4netns to bring up loopback,
+      # so we do it ourselves before handing off to the inner script.
+      ${util-linux}/bin/unshare --user --map-root-user --net \
+        -- ${bash}/bin/bash -c '${iproute2}/bin/ip link set lo up; exec "$@"' _ ${innerScript} "''${INNER_ARGS[@]}"
+      exit $?
+    fi
+
+    # -----------------------------------------------------------------------
+    # Default: isolated namespace with slirp4netns user-mode networking
+    # -----------------------------------------------------------------------
     PIDFILE="$WORK/ns-pid"
     READY="$WORK/ready"
     RESOLV="$WORK/resolv.conf"
@@ -577,22 +632,9 @@ USAGE
     (
       while [ ! -s "$PIDFILE" ]; do sleep 0.1; done
       NS_PID=$(cat "$PIDFILE")
-      exec ${slirp4netns}/bin/slirp4netns --disable-host-loopback -c -6 -r 3 -a "$WORK/slirp-api.sock" "$NS_PID" tap0 3>"$READY" >/dev/null 2>&1
+      exec ${slirp4netns}/bin/slirp4netns --disable-host-loopback -c -6 -r 3 "$NS_PID" tap0 3>"$READY" >/dev/null 2>&1
     ) &
     SLIRP_PID=$!
-
-    # Expose sandbox ports to the host via slirp4netns host forwarding.
-    # Waits for slirp4netns to be ready, then adds forwarding rules via
-    # the API socket. Each rule maps host 127.0.0.1:PORT → sandbox 10.0.2.100:PORT.
-    if [ ''${#SANDBOX_PORTS[@]} -gt 0 ]; then
-      (
-        while [ ! -s "$READY" ]; do sleep 0.1; done
-        for port in "''${SANDBOX_PORTS[@]}"; do
-          printf '{"execute":"add_hostfwd","arguments":{"proto":"tcp","host_addr":"127.0.0.1","host_port":%d,"guest_addr":"10.0.2.100","guest_port":%d}}\n' "$port" "$port" \
-            | ${socat}/bin/socat - UNIX-CONNECT:"$WORK/slirp-api.sock"
-        done
-      ) &
-    fi
 
     # Run the inner script inside a new user + network namespace.
     # Foreground so the TTY is preserved for the interactive shell.
@@ -601,8 +643,6 @@ USAGE
     export __SANDBOX_PIDFILE="$PIDFILE"
     export __SANDBOX_READY="$READY"
     export __SANDBOX_RESOLV="$RESOLV"
-    export __SANDBOX_FORWARD_PORTS="''${HOST_PORTS[*]}"
-    export __SANDBOX_WORK="$WORK"
     ${util-linux}/bin/unshare --user --map-root-user --net \
       -- ${innerScript} "''${INNER_ARGS[@]}"
   '';
