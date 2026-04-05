@@ -76,10 +76,48 @@ testers.runNixOSTest {
         inner = f"({cmd}) > '{result_file}'\n"
         machine.succeed(f"echo '{base64.b64encode(inner.encode()).decode()}' | base64 -d > '{cmd_file}'")
         # Write the sbox invocation to a host script to avoid nested quoting issues.
-        outer = f'cd "{project}" && sbox {args} "{project}" -- bash "{cmd_file}"\n'
+        outer = f'cd "{project}" && sbox {args} bash "{cmd_file}"\n'
         machine.succeed(f"echo '{base64.b64encode(outer.encode()).decode()}' | base64 -d > /tmp/sbox-run.sh")
         machine.succeed("su - alice -c 'bash /tmp/sbox-run.sh'")
         return machine.succeed(f"cat '{result_file}'").strip()
+
+    with subtest("command syntax: first non-option arg is the command"):
+        # sbox echo hello → should run 'echo hello' inside the sandbox
+        val = machine.succeed(
+            f"su - alice -c 'cd \"{project}\" && sbox echo hello'"
+        ).strip()
+        assert "hello" in val, \
+            f"Expected 'hello' from 'sbox echo hello', got: {val!r}"
+
+    with subtest("command syntax: --flag after command is passed to command, not sbox"):
+        # sbox echo --help → should print '--help', not sbox's help text
+        val = machine.succeed(
+            f"su - alice -c 'cd \"{project}\" && sbox echo --help'"
+        ).strip()
+        assert "--help" in val, \
+            f"Expected '--help' echoed back, got: {val!r}"
+        assert "Usage: sbox" not in val, \
+            f"Expected command's --help, not sbox usage, got: {val!r}"
+
+    with subtest("command syntax: unknown --flag is rejected, not treated as command"):
+        # sbox --bogus should error, not try to execute '--bogus'
+        exit_code, output = machine.execute(
+            f"su - alice -c 'cd \"{project}\" && sbox --bogus 2>&1'"
+        )
+        assert exit_code != 0, \
+            f"Expected non-zero exit for unknown flag --bogus, got exit_code={exit_code}"
+        assert "unknown" in output.lower() or "unrecognized" in output.lower(), \
+            f"Expected error message about unknown option, got: {output!r}"
+
+    with subtest("command syntax: --chdir sets the project directory"):
+        # Run sbox from /tmp with --chdir pointing to the project.
+        # Without proper --chdir, PROJECT_DIR would be /tmp and the
+        # project dir would NOT be bind-mounted rw → write would fail.
+        machine.succeed(f"rm -f '{project}/chdir-test'")
+        machine.succeed(
+            f"su - alice -c 'cd /tmp && sbox --chdir \"{project}\" bash -c \"touch \\\"{project}/chdir-test\\\"\"'"
+        )
+        machine.succeed(f"test -f '{project}/chdir-test'")
 
     with subtest("basic sandbox: SANDBOX=1 is set"):
         val = sbox_run("echo $SANDBOX")
@@ -100,7 +138,7 @@ testers.runNixOSTest {
         machine.succeed(f"echo 'echo \"$PS1\" > \"{project}/ps1-out\"' > \"{project}/check-ps1.sh\"")
         machine.succeed(f"chmod +x \"{project}/check-ps1.sh\"")
         machine.succeed(
-            f"su - alice -c 'cd \"{project}\" && sbox \"{project}\" -- bash -i \"{project}/check-ps1.sh\"'"
+            f"su - alice -c 'cd \"{project}\" && sbox bash -i \"{project}/check-ps1.sh\"'"
         )
         val = machine.succeed(f"cat \"{project}/ps1-out\"").strip()
         assert val.startswith("[sandbox]"), \
@@ -134,7 +172,7 @@ testers.runNixOSTest {
         # even though there is no routable guest IP.
         machine.succeed(
             f"su - alice -c '"
-            f"sbox --expose-port 8888 \"{project}\" -- bash -c \""
+            f"cd \"{project}\" && sbox --expose-port 8888 bash -c \""
             f"echo sandbox-hello | nc -l 127.0.0.1 8888 &"
             f"sleep 1; "
             f"echo LISTENING > \\\"{project}/sandbox-ready\\\"; "
@@ -327,7 +365,7 @@ testers.runNixOSTest {
         # then verify the host can reach it via 127.0.0.1:8889.
         machine.succeed(
             f"su - alice -c '"
-            f"sbox --network blocked --expose-port 8889 \"{project}\" -- bash -c \""
+            f"cd \"{project}\" && sbox --network blocked --expose-port 8889 bash -c \""
             f"echo blocked-sandbox-hello | nc -l 0.0.0.0 8889 &"
             f"sleep 1; "
             f"echo LISTENING > \\\"{project}/blocked-sandbox-ready\\\"; "

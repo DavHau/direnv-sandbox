@@ -92,10 +92,13 @@ __direnv_sandbox_hook() {
   touch "$_DIRENV_SANDBOX_EXIT_DIR_FILE"
 
   # Launch sandboxed subshell
+  local _saved_pwd="$PWD"
+  cd "$project_root" || return
   _DIRENV_SANDBOX_ACTIVE=1 \
   _DIRENV_SANDBOX_ROOT="$project_root" \
   _DIRENV_SANDBOX_EXIT_DIR_FILE="$_DIRENV_SANDBOX_EXIT_DIR_FILE" \
-    "${DIRENV_SANDBOX_CMD[@]}" "$project_root" -- bash
+    "${DIRENV_SANDBOX_CMD[@]}" bash
+  cd "$_saved_pwd" || true
 
   # Sync outer shell's CWD with where the user navigated inside the sandbox
   if [[ -s "$_DIRENV_SANDBOX_EXIT_DIR_FILE" ]]; then

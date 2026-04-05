@@ -95,24 +95,7 @@ let
     }
 
     PROJECT_DIR="$(pwd)"
-    EXEC_CMD=()
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        --)
-          shift
-          EXEC_CMD=("$@")
-          break
-          ;;
-        *)
-          PROJECT_DIR="$(realpath -s "$1")"
-          if [ ! -d "$PROJECT_DIR" ]; then
-            echo "Error: Directory '$1' does not exist"
-            exit 1
-          fi
-          shift
-          ;;
-      esac
-    done
+    EXEC_CMD=("$@")
 
     SHELL=$(resolve_cmd "$SHELL")
 
@@ -253,7 +236,7 @@ let
       fi
     fi
 
-    # Use explicit command if given (-- <cmd>), otherwise the configured entrypoint
+    # Use explicit command if given, otherwise the configured entrypoint
     if [ ''${#EXEC_CMD[@]} -gt 0 ]; then
       SANDBOX_ENTRYPOINT=("''${EXEC_CMD[@]}")
     else
@@ -359,25 +342,28 @@ let
     SHARE_KNOWN_HOSTS=1
     HISTORY_MODE="host"
     ALLOW_PARENT="off"
+    CHDIR=""
     HOST_PORTS=()
     SANDBOX_PORTS=()
     BIND_ARGS=()
     PERSIST_ARGS=()
-    ARGS=()
     EXEC_CMD=()
     usage() {
       cat <<USAGE
-Usage: sbox [OPTIONS] [DIR] [-- COMMAND...]
+Usage: sbox [OPTIONS] [COMMAND [ARGS...]]
 
 Launch an isolated development sandbox using bubblewrap and slirp4netns.
 
-If DIR is given, it is mounted read-write as the project directory inside the
-sandbox. Defaults to the current working directory.
+The current working directory is mounted read-write as the project directory
+inside the sandbox. Use --chdir to override.
 
-If COMMAND is given (after --), it is executed inside the sandbox instead of
-an interactive shell.
+If COMMAND is given (the first non-option argument), it and all subsequent
+arguments are executed inside the sandbox. Arguments after COMMAND are passed
+through verbatim, even if they start with --. Without a command, an
+interactive shell is started.
 
 Options:
+  --chdir DIR             Use DIR as the project directory instead of \$PWD
   --network isolated      Isolated namespace with user-mode networking (default)
   --network blocked       Block all network access (loopback only); port
                           forwarding via --allow-port and --expose-port still works
@@ -401,10 +387,10 @@ Options:
 
 Examples:
   sbox                    Sandbox the current directory
-  sbox ~/projects/myapp   Sandbox a specific directory
   sbox -p 5432            Allow access to host PostgreSQL
   sbox --expose-port 8080 Expose sandbox port 8080 to the host
-  sbox -- make build      Run a command inside the sandbox
+  sbox make build         Run 'make build' inside the sandbox
+  sbox ls --all           Run 'ls --all' (--all is passed to ls, not sbox)
 USAGE
       exit 0
     }
@@ -469,22 +455,42 @@ USAGE
           BIND_ARGS+=(--ro-bind-try "$2" "$3")
           shift 3
           ;;
+        --chdir)
+          CHDIR="$2"
+          shift 2
+          ;;
         --)
           shift
           EXEC_CMD=("$@")
           break
           ;;
+        --*)
+          echo "Error: unknown option '$1'" >&2
+          echo "Run 'sbox --help' for usage information." >&2
+          exit 1
+          ;;
         *)
-          ARGS+=("$1")
-          shift
+          # First non-option argument is the command; everything after
+          # (including further --flags) becomes its arguments.
+          EXEC_CMD=("$@")
+          break
           ;;
       esac
     done
 
+    # Apply --chdir before anything that depends on $(pwd).
+    if [ -n "$CHDIR" ]; then
+      if [ ! -d "$CHDIR" ]; then
+        echo "Error: --chdir directory '$CHDIR' does not exist" >&2
+        exit 1
+      fi
+      cd "$CHDIR"
+    fi
+
     # Per-project state directory, computed lazily for --persist and --history project.
     _project_state_dir() {
       if [ -z "''${_PROJECT_STATE_DIR:-}" ]; then
-        local project_dir="''${ARGS[0]:-$(pwd)}"
+        local project_dir="$(pwd)"
         project_dir="$(realpath -s "$project_dir")"
         local hash
         hash="$(printf '%s\n' "$project_dir" | sha256sum | cut -d' ' -f1)"
@@ -527,10 +533,10 @@ USAGE
       done
     fi
 
-    # Build args for the inner script, passing through -- <cmd> if given
-    INNER_ARGS=("''${ARGS[@]}")
+    # Pass the command (if any) to the inner script
+    INNER_ARGS=()
     if [ ''${#EXEC_CMD[@]} -gt 0 ]; then
-      INNER_ARGS+=(-- "''${EXEC_CMD[@]}")
+      INNER_ARGS=("''${EXEC_CMD[@]}")
     fi
 
     ORIG_UID=$(id -u)

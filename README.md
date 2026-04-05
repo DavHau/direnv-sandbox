@@ -148,14 +148,13 @@ The `sbox` command is available on your `$PATH` when the module is enabled. It l
 
 ```bash
 sbox                                    # sandbox the current directory
-sbox ~/projects/myapp                   # sandbox a specific directory
-sbox -- make build                      # run a command inside the sandbox
-sbox --allow-port 5432 -- psql          # forward a host port into the sandbox
+sbox make build                         # run a command inside the sandbox
+sbox --allow-port 5432 psql             # forward a host port into the sandbox
 sbox --expose-port 8080                 # expose a sandbox port to the host
 sbox --network blocked                  # block all internet access
 sbox --network blocked --allow-port 5432  # blocked + forward a host port
 sbox --persist $HOME/.claude            # persist Claude Code state per-project
-sbox --persist $HOME/.npm -- npm i      # persist npm cache per-project
+sbox --persist $HOME/.npm npm i         # persist npm cache per-project
 sbox --history project                 # per-project isolated history
 ```
 

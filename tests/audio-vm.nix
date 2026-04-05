@@ -146,7 +146,7 @@ testers.runNixOSTest {
         outer = (
             "export XDG_RUNTIME_DIR=/run/user/$(id -u) && "
             "cd " + project + " && "
-            "sbox --audio " + project + " -- bash " + project + "/_play.sh\n"
+            "sbox --audio bash " + project + "/_play.sh\n"
         )
         encoded = base64.b64encode(outer.encode()).decode()
         machine.succeed("echo '" + encoded + "' | base64 -d > /tmp/sbox-play.sh")
@@ -207,7 +207,7 @@ testers.runNixOSTest {
         outer = (
             "export XDG_RUNTIME_DIR=/run/user/$(id -u) && "
             "cd " + project + " && "
-            "sbox " + project + " -- bash -c '(bash " + project + "/_check.sh) > " + project + "/result'\n"
+            "sbox bash -c '(bash " + project + "/_check.sh) > " + project + "/result'\n"
         )
         encoded = base64.b64encode(outer.encode()).decode()
         machine.succeed("echo '" + encoded + "' | base64 -d > /tmp/sbox-noaudio.sh")

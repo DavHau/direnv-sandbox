@@ -86,7 +86,9 @@ else
         set -l resolved_root (realpath $__direnv_sandbox_project_root)
         set -lx _DIRENV_SANDBOX_ACTIVE 1
         set -lx _DIRENV_SANDBOX_ROOT $resolved_root
-        $DIRENV_SANDBOX_CMD $resolved_root -- fish
+        set -l _saved_pwd $PWD
+        cd $resolved_root; and $DIRENV_SANDBOX_CMD fish
+        cd $_saved_pwd 2>/dev/null
         if test -s "$_DIRENV_SANDBOX_EXIT_DIR_FILE"
             set -l exit_dir (cat $_DIRENV_SANDBOX_EXIT_DIR_FILE)
             builtin cd -- $exit_dir 2>/dev/null
