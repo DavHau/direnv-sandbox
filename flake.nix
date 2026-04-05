@@ -1,11 +1,21 @@
-# Flake compatibility wrapper. The actual project entry point is nilla.nix.
 {
-  description = "sbox — bubblewrap sandbox for development environments, with direnv integration";
+  description = "This project has moved to github.com/DavHau/sbox";
 
-  # All inputs are managed by nixtamal via nilla.nix — no flake inputs needed.
   inputs = { };
 
-  outputs =
-    { self }:
-    (import ./nilla.nix).flakeOutputs;
+  outputs = _:
+    throw ''
+      direnv-sandbox has moved to github.com/DavHau/sbox
+
+      Update your flake input:
+        sbox.url = "github:DavHau/sbox";
+
+      Use the new module names:
+        sbox.nixosModules.direnv-sandbox
+        sbox.homeManagerModules.direnv-sandbox
+
+      Move sandbox config from programs.direnv.sandbox to programs.sbox:
+        programs.sbox = { bind."$HOME/.cache" = {}; ... };
+        programs.direnv.sandbox.enable = true;
+    '';
 }
